@@ -21,5 +21,5 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/pquerna/otp v1.2.0
 	golang.org/x/tools v0.0.0-20200216192241-b320d3a0f5a2
-	gopkg.in/yaml.v2 v2.2.8
+	gopkg.in/yaml.v2 v2.4.0
 )
