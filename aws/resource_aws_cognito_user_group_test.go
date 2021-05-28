@@ -8,15 +8,15 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/cognitoidentityprovider"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccAWSCognitoUserGroup_basic(t *testing.T) {
-	poolName := fmt.Sprintf("tf-acc-%s", acctest.RandString(10))
-	groupName := fmt.Sprintf("tf-acc-%s", acctest.RandString(10))
-	updatedGroupName := fmt.Sprintf("tf-acc-%s", acctest.RandString(10))
+	poolName := fmt.Sprintf("tf-acc-%s", acctest.RandStringFromCharSet(10, acctest.CharSetAlphaNum))
+	groupName := fmt.Sprintf("tf-acc-%s", acctest.RandStringFromCharSet(10, acctest.CharSetAlphaNum))
+	updatedGroupName := fmt.Sprintf("tf-acc-%s", acctest.RandStringFromCharSet(10, acctest.CharSetAlphaNum))
 	resourceName := "aws_cognito_user_group.main"
 
 	resource.ParallelTest(t, resource.TestCase{
@@ -48,9 +48,9 @@ func TestAccAWSCognitoUserGroup_basic(t *testing.T) {
 }
 
 func TestAccAWSCognitoUserGroup_complex(t *testing.T) {
-	poolName := fmt.Sprintf("tf-acc-%s", acctest.RandString(10))
-	groupName := fmt.Sprintf("tf-acc-%s", acctest.RandString(10))
-	updatedGroupName := fmt.Sprintf("tf-acc-%s", acctest.RandString(10))
+	poolName := fmt.Sprintf("tf-acc-%s", acctest.RandStringFromCharSet(10, acctest.CharSetAlphaNum))
+	groupName := fmt.Sprintf("tf-acc-%s", acctest.RandStringFromCharSet(10, acctest.CharSetAlphaNum))
+	updatedGroupName := fmt.Sprintf("tf-acc-%s", acctest.RandStringFromCharSet(10, acctest.CharSetAlphaNum))
 	resourceName := "aws_cognito_user_group.main"
 
 	resource.ParallelTest(t, resource.TestCase{
@@ -188,7 +188,7 @@ resource "aws_cognito_user_pool" "main" {
 
 resource "aws_cognito_user_group" "main" {
   name         = "%s"
-  user_pool_id = aws_cognito_user_pool.main.id
+  user_pool_id = "${aws_cognito_user_pool.main.id}"
 }
 `, poolName, groupName)
 }
@@ -196,14 +196,11 @@ resource "aws_cognito_user_group" "main" {
 func testAccAWSCognitoUserGroupConfig_complex(poolName, groupName, groupDescription string, precedence int) string {
 	return fmt.Sprintf(`
 resource "aws_cognito_user_pool" "main" {
-  name = "%[1]s"
+  name = "%s"
 }
 
-data "aws_region" "current" {}
-
 resource "aws_iam_role" "group_role" {
-  name = "%[2]s"
-
+  name = "%s"
   assume_role_policy = <<EOF
 {
   "Version": "2012-10-17",
@@ -217,7 +214,7 @@ resource "aws_iam_role" "group_role" {
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
         "StringEquals": {
-          "cognito-identity.amazonaws.com:aud": "${data.aws_region.current.name}:12345678-dead-beef-cafe-123456790ab"
+          "cognito-identity.amazonaws.com:aud": "us-east-1:12345678-dead-beef-cafe-123456790ab"
         },
         "ForAnyValue:StringLike": {
           "cognito-identity.amazonaws.com:amr": "authenticated"
@@ -230,13 +227,13 @@ EOF
 }
 
 resource "aws_cognito_user_group" "main" {
-  name         = "%[2]s"
-  user_pool_id = aws_cognito_user_pool.main.id
-  description  = "%[3]s"
-  precedence   = %[4]d
-  role_arn     = aws_iam_role.group_role.arn
+  name         = "%s"
+  user_pool_id = "${aws_cognito_user_pool.main.id}"
+  description  = "%s"
+  precedence   = %v
+  role_arn     = "${aws_iam_role.group_role.arn}"
 }
-`, poolName, groupName, groupDescription, precedence)
+`, poolName, groupName, groupName, groupDescription, precedence)
 }
 
 func testAccAWSCognitoUserGroupConfig_RoleArn(rName string) string {
@@ -267,8 +264,8 @@ EOF
 
 resource "aws_cognito_user_group" "main" {
   name         = "%[1]s"
-  user_pool_id = aws_cognito_user_pool.main.id
-  role_arn     = aws_iam_role.group_role.arn
+  user_pool_id = "${aws_cognito_user_pool.main.id}"
+  role_arn     = "${aws_iam_role.group_role.arn}"
 }
 `, rName)
 }
@@ -301,8 +298,8 @@ EOF
 
 resource "aws_cognito_user_group" "main" {
   name         = "%[1]s"
-  user_pool_id = aws_cognito_user_pool.main.id
-  role_arn     = aws_iam_role.group_role_updated.arn
+  user_pool_id = "${aws_cognito_user_pool.main.id}"
+  role_arn     = "${aws_iam_role.group_role_updated.arn}"
 }
 `, rName)
 }

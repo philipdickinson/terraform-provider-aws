@@ -3,14 +3,13 @@ package aws
 import (
 	"fmt"
 	"log"
-	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/elb"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
 func resourceAwsLBCookieStickinessPolicy() *schema.Resource {
@@ -130,19 +129,11 @@ func resourceAwsLBCookieStickinessPolicyRead(d *schema.ResourceData, meta interf
 	if *cookieAttr.AttributeName != "CookieExpirationPeriod" {
 		return fmt.Errorf("Unable to find cookie expiration period.")
 	}
-	cookieVal, err := strconv.Atoi(aws.StringValue(cookieAttr.AttributeValue))
-	if err != nil {
-		return fmt.Errorf("Error parsing cookie expiration period: %s", err)
-	}
-	d.Set("cookie_expiration_period", cookieVal)
+	d.Set("cookie_expiration_period", cookieAttr.AttributeValue)
 
 	d.Set("name", policyName)
 	d.Set("load_balancer", lbName)
-	lbPortInt, err := strconv.Atoi(lbPort)
-	if err != nil {
-		return err
-	}
-	d.Set("lb_port", lbPortInt)
+	d.Set("lb_port", lbPort)
 
 	return nil
 }

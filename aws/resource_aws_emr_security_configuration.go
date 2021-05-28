@@ -6,9 +6,9 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/emr"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
 func resourceAwsEMRSecurityConfiguration() *schema.Resource {
@@ -41,7 +41,7 @@ func resourceAwsEMRSecurityConfiguration() *schema.Resource {
 				Type:         schema.TypeString,
 				Required:     true,
 				ForceNew:     true,
-				ValidateFunc: validation.StringIsJSON,
+				ValidateFunc: validation.ValidateJsonString,
 			},
 
 			"creation_date": {
@@ -75,7 +75,7 @@ func resourceAwsEmrSecurityConfigurationCreate(d *schema.ResourceData, meta inte
 		return err
 	}
 
-	d.SetId(aws.StringValue(resp.Name))
+	d.SetId(*resp.Name)
 	return resourceAwsEmrSecurityConfigurationRead(d, meta)
 }
 

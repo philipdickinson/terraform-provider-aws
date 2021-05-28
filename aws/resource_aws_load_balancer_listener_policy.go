@@ -8,7 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/elb"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 func resourceAwsLoadBalancerListenerPolicies() *schema.Resource {
@@ -46,7 +46,7 @@ func resourceAwsLoadBalancerListenerPoliciesCreate(d *schema.ResourceData, meta 
 
 	policyNames := []*string{}
 	if v, ok := d.GetOk("policy_names"); ok {
-		policyNames = expandStringSet(v.(*schema.Set))
+		policyNames = expandStringList(v.(*schema.Set).List())
 	}
 
 	setOpts := &elb.SetLoadBalancerPoliciesOfListenerInput{
@@ -100,11 +100,7 @@ func resourceAwsLoadBalancerListenerPoliciesRead(d *schema.ResourceData, meta in
 	}
 
 	d.Set("load_balancer_name", loadBalancerName)
-	loadBalancerPortVal, err := strconv.ParseInt(loadBalancerPort, 10, 64)
-	if err != nil {
-		return fmt.Errorf("error parsing load balancer port: %s", err)
-	}
-	d.Set("load_balancer_port", loadBalancerPortVal)
+	d.Set("load_balancer_port", loadBalancerPort)
 	d.Set("policy_names", flattenStringList(policyNames))
 
 	return nil

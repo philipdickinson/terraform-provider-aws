@@ -2,11 +2,10 @@ package aws
 
 import (
 	"fmt"
-	"regexp"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccDataSourceAwsEfsFileSystem_id(t *testing.T) {
@@ -31,7 +30,6 @@ func TestAccDataSourceAwsEfsFileSystem_id(t *testing.T) {
 					resource.TestCheckResourceAttrPair(dataSourceName, "provisioned_throughput_in_mibps", resourceName, "provisioned_throughput_in_mibps"),
 					resource.TestCheckResourceAttrPair(dataSourceName, "throughput_mode", resourceName, "throughput_mode"),
 					resource.TestCheckResourceAttrPair(dataSourceName, "lifecycle_policy", resourceName, "lifecycle_policy"),
-					resource.TestMatchResourceAttr(dataSourceName, "size_in_bytes", regexp.MustCompile(`^\d+$`)),
 				),
 			},
 		},
@@ -60,22 +58,7 @@ func TestAccDataSourceAwsEfsFileSystem_name(t *testing.T) {
 					resource.TestCheckResourceAttrPair(dataSourceName, "provisioned_throughput_in_mibps", resourceName, "provisioned_throughput_in_mibps"),
 					resource.TestCheckResourceAttrPair(dataSourceName, "throughput_mode", resourceName, "throughput_mode"),
 					resource.TestCheckResourceAttrPair(dataSourceName, "lifecycle_policy", resourceName, "lifecycle_policy"),
-					resource.TestMatchResourceAttr(dataSourceName, "size_in_bytes", regexp.MustCompile(`^\d+$`)),
 				),
-			},
-		},
-	})
-}
-
-func TestAccDataSourceAwsEfsFileSystem_NonExistent(t *testing.T) {
-
-	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:  func() { testAccPreCheck(t) },
-		Providers: testAccProviders,
-		Steps: []resource.TestStep{
-			{
-				Config:      testAccDataSourceAwsEfsFileSystemIDConfig_NonExistent,
-				ExpectError: regexp.MustCompile(`error reading EFS FileSystem`),
 			},
 		},
 	})
@@ -115,17 +98,11 @@ func testAccDataSourceAwsEfsFileSystemCheck(dName, rName string) resource.TestCh
 	}
 }
 
-const testAccDataSourceAwsEfsFileSystemIDConfig_NonExistent = `
-data "aws_efs_file_system" "test" {
-  file_system_id = "fs-nonexistent"
-}
-`
-
 const testAccDataSourceAwsEfsFileSystemNameConfig = `
 resource "aws_efs_file_system" "test" {}
 
 data "aws_efs_file_system" "test" {
-  creation_token = aws_efs_file_system.test.creation_token
+creation_token = "${aws_efs_file_system.test.creation_token}"
 }
 `
 
@@ -133,6 +110,6 @@ const testAccDataSourceAwsEfsFileSystemIDConfig = `
 resource "aws_efs_file_system" "test" {}
 
 data "aws_efs_file_system" "test" {
-  file_system_id = aws_efs_file_system.test.id
+  file_system_id = "${aws_efs_file_system.test.id}"
 }
 `

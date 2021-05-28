@@ -8,10 +8,11 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/ses"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
-	"github.com/terraform-providers/terraform-provider-aws/aws/internal/hashcode"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/hashcode"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
 func resourceAwsSesReceiptRule() *schema.Resource {
@@ -436,17 +437,14 @@ func resourceAwsSesReceiptRuleRead(d *schema.ResourceData, meta interface{}) err
 
 	response, err := conn.DescribeReceiptRule(describeOpts)
 	if err != nil {
-		if isAWSErr(err, ses.ErrCodeRuleDoesNotExistException, "") {
+		_, ok := err.(awserr.Error)
+		if ok && err.(awserr.Error).Code() == "RuleDoesNotExist" {
 			log.Printf("[WARN] SES Receipt Rule (%s) not found", d.Id())
 			d.SetId("")
 			return nil
+		} else {
+			return err
 		}
-		if isAWSErr(err, ses.ErrCodeRuleSetDoesNotExistException, "") {
-			log.Printf("[WARN] SES Receipt Rule Set (%s) belonging to SES Receipt Rule (%s) not found, removing from state", aws.StringValue(describeOpts.RuleSetName), d.Id())
-			d.SetId("")
-			return nil
-		}
-		return err
 	}
 
 	d.Set("enabled", response.Rule.Enabled)
@@ -626,7 +624,7 @@ func buildReceiptRule(d *schema.ResourceData) *ses.ReceiptRule {
 	}
 
 	if v, ok := d.GetOk("recipients"); ok {
-		receiptRule.Recipients = expandStringSet(v.(*schema.Set))
+		receiptRule.Recipients = expandStringList(v.(*schema.Set).List())
 	}
 
 	if v, ok := d.GetOk("scan_enabled"); ok {

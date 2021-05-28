@@ -8,8 +8,9 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ram"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 func resourceAwsRamResourceShareAccepter() *schema.Resource {
@@ -150,7 +151,7 @@ func resourceAwsRamResourceShareAccepterRead(d *schema.ResourceData, meta interf
 
 	shares, err := conn.GetResourceShares(listResourceSharesInput)
 	if err != nil {
-		return fmt.Errorf("error retrieving resource shares: %w", err)
+		return fmt.Errorf("Error retrieving resource shares: %s", err)
 	}
 
 	if len(shares.ResourceShares) != 1 {

@@ -2,21 +2,20 @@ package aws
 
 import (
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
 	"regexp"
 	"testing"
 
-	"github.com/aws/aws-sdk-go/service/waf"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 )
 
-func TestAccDataSourceAwsWafRule_basic(t *testing.T) {
+func TestAccDataSourceAwsWafRule_Basic(t *testing.T) {
 	name := acctest.RandomWithPrefix("tf-acc-test")
 	resourceName := "aws_waf_rule.wafrule"
 	datasourceName := "data.aws_waf_rule.wafrule"
 
 	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:  func() { testAccPreCheck(t); testAccPartitionHasServicePreCheck(waf.EndpointsID, t) },
+		PreCheck:  func() { testAccPreCheck(t) },
 		Providers: testAccProviders,
 		Steps: []resource.TestStep{
 			{
@@ -42,7 +41,7 @@ resource "aws_waf_rule" "wafrule" {
 }
 
 data "aws_waf_rule" "wafrule" {
-  name = aws_waf_rule.wafrule.name
+  name = "${aws_waf_rule.wafrule.name}"
 }
 `, name)
 }

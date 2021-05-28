@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/pinpoint"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccAWSPinpointSMSChannel_basic(t *testing.T) {
@@ -137,16 +138,15 @@ const testAccAWSPinpointSMSChannelConfig_basic = `
 resource "aws_pinpoint_app" "test_app" {}
 
 resource "aws_pinpoint_sms_channel" "test_sms_channel" {
-  application_id = aws_pinpoint_app.test_app.application_id
-}
-`
+  application_id = "${aws_pinpoint_app.test_app.application_id}"
+}`
 
 func testAccAWSPinpointSMSChannelConfig_full(senderId, shortCode string) string {
 	return fmt.Sprintf(`
 resource "aws_pinpoint_app" "test_app" {}
 
 resource "aws_pinpoint_sms_channel" "test_sms_channel" {
-  application_id = aws_pinpoint_app.test_app.application_id
+  application_id = "${aws_pinpoint_app.test_app.application_id}"
   enabled        = "false"
   sender_id      = "%s"
   short_code     = "%s"

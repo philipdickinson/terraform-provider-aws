@@ -8,14 +8,15 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/ses"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
-func TestAccAWSSesTemplate_basic(t *testing.T) {
+func TestAccAWSSesTemplate_Basic(t *testing.T) {
 	resourceName := "aws_ses_template.test"
-	rName := acctest.RandomWithPrefix("tf-acc-test")
+	name := acctest.RandString(5)
 	var template ses.Template
 
 	resource.ParallelTest(t, resource.TestCase{
@@ -24,10 +25,10 @@ func TestAccAWSSesTemplate_basic(t *testing.T) {
 		CheckDestroy: testAccCheckSesTemplateDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccCheckAwsSesTemplateResourceConfigBasic1(rName),
+				Config: testAccCheckAwsSesTemplateResourceConfigBasic1(name),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckSesTemplateExists(resourceName, &template),
-					resource.TestCheckResourceAttr(resourceName, "name", rName),
+					testAccCheckSesTemplate(resourceName, &template),
+					resource.TestCheckResourceAttr(resourceName, "name", name),
 					resource.TestCheckResourceAttr(resourceName, "html", "html"),
 					resource.TestCheckResourceAttr(resourceName, "subject", "subject"),
 					resource.TestCheckResourceAttr(resourceName, "text", ""),
@@ -43,10 +44,10 @@ func TestAccAWSSesTemplate_basic(t *testing.T) {
 }
 
 func TestAccAWSSesTemplate_Update(t *testing.T) {
-	TestAccSkip(t, "Skip due to SES.UpdateTemplate eventual consistency issues")
-	rName := acctest.RandomWithPrefix("tf-acc-test")
-	resourceName := "aws_ses_template.test"
+	t.Skipf("Skip due to SES.UpdateTemplate eventual consistency issues")
+	name := acctest.RandString(5)
 	var template ses.Template
+	resourceName := "aws_ses_template.test"
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckAWSSES(t) },
@@ -54,10 +55,10 @@ func TestAccAWSSesTemplate_Update(t *testing.T) {
 		CheckDestroy: testAccCheckSesTemplateDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccCheckAwsSesTemplateResourceConfigBasic1(rName),
+				Config: testAccCheckAwsSesTemplateResourceConfigBasic1(name),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckSesTemplateExists(resourceName, &template),
-					resource.TestCheckResourceAttr(resourceName, "name", rName),
+					testAccCheckSesTemplate(resourceName, &template),
+					resource.TestCheckResourceAttr(resourceName, "name", name),
 					resource.TestCheckResourceAttr(resourceName, "html", "html"),
 					resource.TestCheckResourceAttr(resourceName, "subject", "subject"),
 					resource.TestCheckResourceAttr(resourceName, "text", ""),
@@ -69,20 +70,20 @@ func TestAccAWSSesTemplate_Update(t *testing.T) {
 				ImportStateVerify: true,
 			},
 			{
-				Config: testAccCheckAwsSesTemplateResourceConfigBasic2(rName),
+				Config: testAccCheckAwsSesTemplateResourceConfigBasic2(name),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckSesTemplateExists(resourceName, &template),
-					resource.TestCheckResourceAttr(resourceName, "name", rName),
+					testAccCheckSesTemplate(resourceName, &template),
+					resource.TestCheckResourceAttr(resourceName, "name", name),
 					resource.TestCheckResourceAttr(resourceName, "html", "html"),
 					resource.TestCheckResourceAttr(resourceName, "subject", "subject"),
 					resource.TestCheckResourceAttr(resourceName, "text", "text"),
 				),
 			},
 			{
-				Config: testAccCheckAwsSesTemplateResourceConfigBasic3(rName),
+				Config: testAccCheckAwsSesTemplateResourceConfigBasic3(name),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckSesTemplateExists(resourceName, &template),
-					resource.TestCheckResourceAttr(resourceName, "name", rName),
+					testAccCheckSesTemplate(resourceName, &template),
+					resource.TestCheckResourceAttr(resourceName, "name", name),
 					resource.TestCheckResourceAttr(resourceName, "html", "html update"),
 					resource.TestCheckResourceAttr(resourceName, "subject", "subject"),
 					resource.TestCheckResourceAttr(resourceName, "text", ""),
@@ -92,29 +93,7 @@ func TestAccAWSSesTemplate_Update(t *testing.T) {
 	})
 }
 
-func TestAccAWSSesTemplate_disappears(t *testing.T) {
-	resourceName := "aws_ses_template.test"
-	rName := acctest.RandomWithPrefix("tf-acc-test")
-	var template ses.Template
-
-	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckAWSSES(t) },
-		Providers:    testAccProviders,
-		CheckDestroy: testAccCheckSesTemplateDestroy,
-		Steps: []resource.TestStep{
-			{
-				Config: testAccCheckAwsSesTemplateResourceConfigBasic1(rName),
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckSesTemplateExists(resourceName, &template),
-					testAccCheckResourceDisappears(testAccProvider, resourceAwsSesTemplate(), resourceName),
-				),
-				ExpectNonEmptyPlan: true,
-			},
-		},
-	})
-}
-
-func testAccCheckSesTemplateExists(pr string, template *ses.Template) resource.TestCheckFunc {
+func testAccCheckSesTemplate(pr string, template *ses.Template) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		conn := testAccProvider.Meta().(*AWSClient).sesconn
 		rs, ok := s.RootModule().Resources[pr]
@@ -130,18 +109,8 @@ func testAccCheckSesTemplateExists(pr string, template *ses.Template) resource.T
 			TemplateName: aws.String(rs.Primary.ID),
 		}
 
-		templateOutput, err := conn.GetTemplate(&input)
-		if err != nil {
-			return err
-		}
-
-		if templateOutput == nil || templateOutput.Template == nil {
-			return fmt.Errorf("SES Template (%s) not found", rs.Primary.ID)
-		}
-
-		*template = *templateOutput.Template
-
-		return nil
+		_, err := conn.GetTemplate(&input)
+		return err
 	}
 }
 

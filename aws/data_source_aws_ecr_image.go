@@ -3,11 +3,12 @@ package aws
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ecr"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
 func dataSourceAwsEcrImage() *schema.Resource {
@@ -97,7 +98,7 @@ func dataSourceAwsEcrImageRead(d *schema.ResourceData, meta interface{}) error {
 
 	image := imageDetails[0]
 
-	d.SetId(aws.StringValue(image.ImageDigest))
+	d.SetId(time.Now().UTC().String())
 	if err = d.Set("registry_id", aws.StringValue(image.RegistryId)); err != nil {
 		return fmt.Errorf("failed to set registry_id: %s", err)
 	}

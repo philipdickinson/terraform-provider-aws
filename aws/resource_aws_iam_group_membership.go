@@ -6,7 +6,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 func resourceAwsIamGroupMembership() *schema.Resource {
@@ -43,7 +43,7 @@ func resourceAwsIamGroupMembershipCreate(d *schema.ResourceData, meta interface{
 	conn := meta.(*AWSClient).iamconn
 
 	group := d.Get("group").(string)
-	userList := expandStringSet(d.Get("users").(*schema.Set))
+	userList := expandStringList(d.Get("users").(*schema.Set).List())
 
 	if err := addUsersToGroup(conn, userList, group); err != nil {
 		return err
@@ -110,8 +110,8 @@ func resourceAwsIamGroupMembershipUpdate(d *schema.ResourceData, meta interface{
 
 		os := o.(*schema.Set)
 		ns := n.(*schema.Set)
-		remove := expandStringSet(os.Difference(ns))
-		add := expandStringSet(ns.Difference(os))
+		remove := expandStringList(os.Difference(ns).List())
+		add := expandStringList(ns.Difference(os).List())
 
 		if err := removeUsersFromGroup(conn, remove, group); err != nil {
 			return err
@@ -127,7 +127,7 @@ func resourceAwsIamGroupMembershipUpdate(d *schema.ResourceData, meta interface{
 
 func resourceAwsIamGroupMembershipDelete(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).iamconn
-	userList := expandStringSet(d.Get("users").(*schema.Set))
+	userList := expandStringList(d.Get("users").(*schema.Set).List())
 	group := d.Get("group").(string)
 
 	err := removeUsersFromGroup(conn, userList, group)

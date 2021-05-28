@@ -7,16 +7,16 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/hashicorp/aws-sdk-go-base/tfawserr"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
-func TestAccAWSSpotDatafeedSubscription_serial(t *testing.T) {
+func TestAccAWSSpotDatafeedSubscription(t *testing.T) {
 	cases := map[string]func(t *testing.T){
 		"basic":      testAccAWSSpotDatafeedSubscription_basic,
 		"disappears": testAccAWSSpotDatafeedSubscription_disappears,
+		"import":     testAccAWSSpotDatafeedSubscription_importBasic,
 	}
 
 	for name, tc := range cases {
@@ -26,26 +26,42 @@ func TestAccAWSSpotDatafeedSubscription_serial(t *testing.T) {
 	}
 }
 
-func testAccAWSSpotDatafeedSubscription_basic(t *testing.T) {
-	var subscription ec2.SpotDatafeedSubscription
-	resourceName := "aws_spot_datafeed_subscription.test"
-	rName := acctest.RandomWithPrefix("tf-acc-test")
+func testAccAWSSpotDatafeedSubscription_importBasic(t *testing.T) {
+	resourceName := "aws_spot_datafeed_subscription.default"
+	ri := acctest.RandInt()
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckAWSSpotDatafeedSubscription(t) },
+		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccCheckAWSSpotDatafeedSubscriptionDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccAWSSpotDatafeedSubscription(rName),
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckAWSSpotDatafeedSubscriptionExists(resourceName, &subscription),
-				),
+				Config: testAccAWSSpotDatafeedSubscription(ri),
 			},
+
 			{
 				ResourceName:      resourceName,
 				ImportState:       true,
 				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
+func testAccAWSSpotDatafeedSubscription_basic(t *testing.T) {
+	var subscription ec2.SpotDatafeedSubscription
+	ri := acctest.RandInt()
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckAWSSpotDatafeedSubscriptionDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccAWSSpotDatafeedSubscription(ri),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckAWSSpotDatafeedSubscriptionExists("aws_spot_datafeed_subscription.default", &subscription),
+				),
 			},
 		},
 	})
@@ -77,18 +93,17 @@ func testAccCheckAWSSpotDatafeedSubscriptionDisappears(subscription *ec2.SpotDat
 
 func testAccAWSSpotDatafeedSubscription_disappears(t *testing.T) {
 	var subscription ec2.SpotDatafeedSubscription
-	resourceName := "aws_spot_datafeed_subscription.test"
-	rName := acctest.RandomWithPrefix("tf-acc-test")
+	ri := acctest.RandInt()
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckAWSSpotDatafeedSubscription(t) },
+		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccCheckAWSSpotDatafeedSubscriptionDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccAWSSpotDatafeedSubscription(rName),
+				Config: testAccAWSSpotDatafeedSubscription(ri),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckAWSSpotDatafeedSubscriptionExists(resourceName, &subscription),
+					testAccCheckAWSSpotDatafeedSubscriptionExists("aws_spot_datafeed_subscription.default", &subscription),
 					testAccCheckAWSSpotDatafeedSubscriptionDisappears(&subscription),
 				),
 				ExpectNonEmptyPlan: true,
@@ -129,62 +144,32 @@ func testAccCheckAWSSpotDatafeedSubscriptionDestroy(s *terraform.State) error {
 			continue
 		}
 
+		// Try to get subscription
 		_, err := conn.DescribeSpotDatafeedSubscription(&ec2.DescribeSpotDatafeedSubscriptionInput{})
-
-		if tfawserr.ErrCodeEquals(err, "InvalidSpotDatafeed.NotFound") {
-			continue
+		if err == nil {
+			return fmt.Errorf("still exist.")
 		}
 
-		if err != nil {
-			return fmt.Errorf("error descripting EC2 Spot Datafeed Subscription: %w", err)
+		awsErr, ok := err.(awserr.Error)
+		if !ok {
+			return err
+		}
+		if awsErr.Code() != "InvalidSpotDatafeed.NotFound" {
+			return err
 		}
 	}
 
 	return nil
 }
 
-func testAccPreCheckAWSSpotDatafeedSubscription(t *testing.T) {
-	conn := testAccProvider.Meta().(*AWSClient).ec2conn
-
-	input := &ec2.DescribeSpotDatafeedSubscriptionInput{}
-
-	_, err := conn.DescribeSpotDatafeedSubscription(input)
-
-	if testAccPreCheckSkipError(err) {
-		t.Skipf("skipping acceptance testing: %s", err)
-	}
-
-	if tfawserr.ErrCodeEquals(err, "InvalidSpotDatafeed.NotFound") {
-		return
-	}
-
-	if err != nil {
-		t.Fatalf("unexpected PreCheck error: %s", err)
-	}
-}
-
-func testAccAWSSpotDatafeedSubscription(rName string) string {
+func testAccAWSSpotDatafeedSubscription(randInt int) string {
 	return fmt.Sprintf(`
-data "aws_canonical_user_id" "current" {}
-
-resource "aws_s3_bucket" "test" {
-  bucket = %[1]q
-
-  grant {
-    id          = data.aws_canonical_user_id.current.id
-    permissions = ["FULL_CONTROL"]
-    type        = "CanonicalUser"
-  }
-
-  grant {
-    id          = "c4c1ede66af53448b93c283ce9448c4ba468c9432aa01d700d3878632f77d2d0" # EC2 Account
-    permissions = ["FULL_CONTROL"]
-    type        = "CanonicalUser"
-  }
+resource "aws_s3_bucket" "default" {
+  bucket = "tf-spot-datafeed-%d"
 }
 
-resource "aws_spot_datafeed_subscription" "test" {
-  bucket = aws_s3_bucket.test.bucket
+resource "aws_spot_datafeed_subscription" "default" {
+  bucket = "${aws_s3_bucket.default.bucket}"
 }
-`, rName)
+`, randInt)
 }

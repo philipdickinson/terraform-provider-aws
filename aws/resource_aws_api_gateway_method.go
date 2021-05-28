@@ -7,8 +7,9 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/apigateway"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 func resourceAwsApiGatewayMethod() *schema.Resource {
@@ -89,12 +90,13 @@ func resourceAwsApiGatewayMethod() *schema.Resource {
 				Optional: true,
 			},
 
-			"request_validator_id": {
+			"request_parameters_in_json": {
 				Type:     schema.TypeString,
 				Optional: true,
+				Removed:  "Use `request_parameters` argument instead",
 			},
 
-			"operation_name": {
+			"request_validator_id": {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
@@ -138,11 +140,7 @@ func resourceAwsApiGatewayMethodCreate(d *schema.ResourceData, meta interface{})
 	}
 
 	if v, ok := d.GetOk("authorization_scopes"); ok {
-		input.AuthorizationScopes = expandStringSet(v.(*schema.Set))
-	}
-
-	if v, ok := d.GetOk("operation_name"); ok {
-		input.OperationName = aws.String(v.(string))
+		input.AuthorizationScopes = expandStringList(v.(*schema.Set).List())
 	}
 
 	if v, ok := d.GetOk("request_validator_id"); ok {
@@ -170,7 +168,7 @@ func resourceAwsApiGatewayMethodRead(d *schema.ResourceData, meta interface{}) e
 		RestApiId:  aws.String(d.Get("rest_api_id").(string)),
 	})
 	if err != nil {
-		if isAWSErr(err, apigateway.ErrCodeNotFoundException, "") {
+		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "NotFoundException" {
 			log.Printf("[WARN] API Gateway Method (%s) not found, removing from state", d.Id())
 			d.SetId("")
 			return nil
@@ -187,7 +185,6 @@ func resourceAwsApiGatewayMethodRead(d *schema.ResourceData, meta interface{}) e
 
 	d.Set("authorization", out.AuthorizationType)
 	d.Set("authorizer_id", out.AuthorizerId)
-	d.Set("operation_name", out.OperationName)
 
 	if err := d.Set("request_models", aws.StringValueMap(out.RequestModels)); err != nil {
 		return fmt.Errorf("error setting request_models: %s", err)
@@ -209,7 +206,7 @@ func resourceAwsApiGatewayMethodUpdate(d *schema.ResourceData, meta interface{})
 	operations := make([]*apigateway.PatchOperation, 0)
 	if d.HasChange("resource_id") {
 		operations = append(operations, &apigateway.PatchOperation{
-			Op:    aws.String(apigateway.OpReplace),
+			Op:    aws.String("replace"),
 			Path:  aws.String("/resourceId"),
 			Value: aws.String(d.Get("resource_id").(string)),
 		})
@@ -217,6 +214,14 @@ func resourceAwsApiGatewayMethodUpdate(d *schema.ResourceData, meta interface{})
 
 	if d.HasChange("request_models") {
 		operations = append(operations, expandApiGatewayRequestResponseModelOperations(d, "request_models", "requestModels")...)
+	}
+
+	if d.HasChange("request_parameters_in_json") {
+		ops, err := deprecatedExpandApiGatewayMethodParametersJSONOperations(d, "request_parameters_in_json", "requestParameters")
+		if err != nil {
+			return err
+		}
+		operations = append(operations, ops...)
 	}
 
 	if d.HasChange("request_parameters") {
@@ -229,13 +234,16 @@ func resourceAwsApiGatewayMethodUpdate(d *schema.ResourceData, meta interface{})
 				parameters[k] = value
 			}
 		}
-		ops := expandApiGatewayMethodParametersOperations(d, "request_parameters", "requestParameters")
+		ops, err := expandApiGatewayMethodParametersOperations(d, "request_parameters", "requestParameters")
+		if err != nil {
+			return err
+		}
 		operations = append(operations, ops...)
 	}
 
 	if d.HasChange("authorization") {
 		operations = append(operations, &apigateway.PatchOperation{
-			Op:    aws.String(apigateway.OpReplace),
+			Op:    aws.String("replace"),
 			Path:  aws.String("/authorizationType"),
 			Value: aws.String(d.Get("authorization").(string)),
 		})
@@ -243,7 +251,7 @@ func resourceAwsApiGatewayMethodUpdate(d *schema.ResourceData, meta interface{})
 
 	if d.HasChange("authorizer_id") {
 		operations = append(operations, &apigateway.PatchOperation{
-			Op:    aws.String(apigateway.OpReplace),
+			Op:    aws.String("replace"),
 			Path:  aws.String("/authorizerId"),
 			Value: aws.String(d.Get("authorizer_id").(string)),
 		})
@@ -259,7 +267,7 @@ func resourceAwsApiGatewayMethodUpdate(d *schema.ResourceData, meta interface{})
 		additionList := ns.Difference(os)
 		for _, v := range additionList.List() {
 			operations = append(operations, &apigateway.PatchOperation{
-				Op:    aws.String(apigateway.OpAdd),
+				Op:    aws.String("add"),
 				Path:  aws.String(path),
 				Value: aws.String(v.(string)),
 			})
@@ -268,7 +276,7 @@ func resourceAwsApiGatewayMethodUpdate(d *schema.ResourceData, meta interface{})
 		removalList := os.Difference(ns)
 		for _, v := range removalList.List() {
 			operations = append(operations, &apigateway.PatchOperation{
-				Op:    aws.String(apigateway.OpRemove),
+				Op:    aws.String("remove"),
 				Path:  aws.String(path),
 				Value: aws.String(v.(string)),
 			})
@@ -277,7 +285,7 @@ func resourceAwsApiGatewayMethodUpdate(d *schema.ResourceData, meta interface{})
 
 	if d.HasChange("api_key_required") {
 		operations = append(operations, &apigateway.PatchOperation{
-			Op:    aws.String(apigateway.OpReplace),
+			Op:    aws.String("replace"),
 			Path:  aws.String("/apiKeyRequired"),
 			Value: aws.String(fmt.Sprintf("%t", d.Get("api_key_required").(bool))),
 		})
@@ -293,23 +301,9 @@ func resourceAwsApiGatewayMethodUpdate(d *schema.ResourceData, meta interface{})
 			}
 		}
 		operations = append(operations, &apigateway.PatchOperation{
-			Op:    aws.String(apigateway.OpReplace),
+			Op:    aws.String("replace"),
 			Path:  aws.String("/requestValidatorId"),
 			Value: request_validator_id,
-		})
-	}
-
-	if d.HasChange("operation_name") {
-		var operation_name *string
-		if v, ok := d.GetOk("operation_name"); ok {
-			if s := v.(string); len(s) > 0 {
-				operation_name = &s
-			}
-		}
-		operations = append(operations, &apigateway.PatchOperation{
-			Op:    aws.String("replace"),
-			Path:  aws.String("/operationName"),
-			Value: operation_name,
 		})
 	}
 

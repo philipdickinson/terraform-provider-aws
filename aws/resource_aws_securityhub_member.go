@@ -6,18 +6,15 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/securityhub"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 const (
-	// Associated is the member status naming for regions that do not support Organizations
-	SecurityHubMemberStatusAssociated = "Associated"
 	SecurityHubMemberStatusCreated    = "Created"
 	SecurityHubMemberStatusInvited    = "Invited"
-	SecurityHubMemberStatusEnabled    = "Enabled"
-	SecurityHubMemberStatusRemoved    = "Removed"
+	SecurityHubMemberStatusAssociated = "Associated"
 	SecurityHubMemberStatusResigned   = "Resigned"
-	SecurityHubMemberStatusDeleted    = "Deleted"
+	SecurityHubMemberStatusRemoved    = "Removed"
 )
 
 func resourceAwsSecurityHubMember() *schema.Resource {
@@ -131,7 +128,7 @@ func resourceAwsSecurityHubMemberRead(d *schema.ResourceData, meta interface{}) 
 	status := aws.StringValue(member.MemberStatus)
 	d.Set("member_status", status)
 
-	invited := status == SecurityHubMemberStatusInvited || status == SecurityHubMemberStatusEnabled || status == SecurityHubMemberStatusAssociated || status == SecurityHubMemberStatusResigned
+	invited := status == SecurityHubMemberStatusInvited || status == SecurityHubMemberStatusAssociated || status == SecurityHubMemberStatusResigned
 	d.Set("invite", invited)
 
 	return nil

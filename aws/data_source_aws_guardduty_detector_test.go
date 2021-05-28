@@ -1,12 +1,13 @@
 package aws
 
 import (
+	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 )
 
-func testAccAWSGuarddutyDetectorDataSource_basic(t *testing.T) {
+func TestAccAWSGuarddutyDetectorDataSource_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                  func() { testAccPreCheck(t) },
 		Providers:                 testAccProviders,
@@ -29,7 +30,7 @@ func testAccAWSGuarddutyDetectorDataSource_basic(t *testing.T) {
 	})
 }
 
-func testAccAWSGuarddutyDetectorDataSource_Id(t *testing.T) {
+func TestAccAWSGuarddutyDetectorDataSource_explicit(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:  func() { testAccPreCheck(t) },
 		Providers: testAccProviders,
@@ -48,25 +49,25 @@ func testAccAWSGuarddutyDetectorDataSource_Id(t *testing.T) {
 }
 
 func testAccAwsGuarddutyDetectorBasicResourceConfig() string {
-	return `
+	return fmt.Sprintf(`
 resource "aws_guardduty_detector" "test" {}
-`
+`)
 }
 
 func testAccAwsGuarddutyDetectorBasicResourceDataConfig() string {
-	return `
+	return fmt.Sprintf(`
 resource "aws_guardduty_detector" "test" {}
 
 data "aws_guardduty_detector" "test" {}
-`
+`)
 }
 
 func testAccAwsGuarddutyDetectorExplicitConfig() string {
-	return `
+	return fmt.Sprintf(`
 resource "aws_guardduty_detector" "test" {}
 
 data "aws_guardduty_detector" "test" {
-  id = aws_guardduty_detector.test.id
+	id = "${aws_guardduty_detector.test.id}"
 }
-`
+`)
 }

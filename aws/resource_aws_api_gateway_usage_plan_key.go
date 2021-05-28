@@ -6,8 +6,9 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/apigateway"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 func resourceAwsApiGatewayUsagePlanKey() *schema.Resource {
@@ -73,12 +74,11 @@ func resourceAwsApiGatewayUsagePlanKeyCreate(d *schema.ResourceData, meta interf
 	}
 
 	up, err := conn.CreateUsagePlanKey(params)
-
 	if err != nil {
-		return fmt.Errorf("error creating API Gateway Usage Plan Key: %w", err)
+		return fmt.Errorf("Error creating API Gateway Usage Plan Key: %s", err)
 	}
 
-	d.SetId(aws.StringValue(up.Id))
+	d.SetId(*up.Id)
 
 	return resourceAwsApiGatewayUsagePlanKeyRead(d, meta)
 }
@@ -92,7 +92,7 @@ func resourceAwsApiGatewayUsagePlanKeyRead(d *schema.ResourceData, meta interfac
 		KeyId:       aws.String(d.Get("key_id").(string)),
 	})
 	if err != nil {
-		if isAWSErr(err, apigateway.ErrCodeNotFoundException, "") {
+		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == apigateway.ErrCodeNotFoundException {
 			log.Printf("[WARN] API Gateway Usage Plan Key (%s) not found, removing from state", d.Id())
 			d.SetId("")
 			return nil

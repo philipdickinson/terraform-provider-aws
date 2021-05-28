@@ -1,7 +1,3 @@
-variable "aws_region" {
-  default = "us-west-2"
-}
-
 variable "identifier" {
   default     = "mydb-rds"
   description = "Identifier for your DB"

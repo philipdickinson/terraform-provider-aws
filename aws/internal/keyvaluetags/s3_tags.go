@@ -7,8 +7,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/hashicorp/aws-sdk-go-base/tfawserr"
-	tfs3 "github.com/terraform-providers/terraform-provider-aws/aws/internal/service/s3"
+	awsbase "github.com/hashicorp/aws-sdk-go-base"
 )
 
 // Custom S3 tag service update functions using the same format as generated code.
@@ -25,7 +24,7 @@ func S3BucketListTags(conn *s3.S3, identifier string) (KeyValueTags, error) {
 	// S3 API Reference (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketTagging.html)
 	// lists the special error as NoSuchTagSetError, however the existing logic used NoSuchTagSet
 	// and the AWS Go SDK has neither as a constant.
-	if tfawserr.ErrCodeEquals(err, tfs3.ErrCodeNoSuchTagSet) {
+	if awsbase.IsAWSErr(err, "NoSuchTagSet", "") {
 		return New(nil), nil
 	}
 
@@ -42,20 +41,20 @@ func S3BucketUpdateTags(conn *s3.S3, identifier string, oldTagsMap interface{}, 
 	oldTags := New(oldTagsMap)
 	newTags := New(newTagsMap)
 
-	// We need to also consider any existing ignored tags.
+	// We need to also consider any existing system tags.
 	allTags, err := S3BucketListTags(conn, identifier)
 
 	if err != nil {
 		return fmt.Errorf("error listing resource tags (%s): %w", identifier, err)
 	}
 
-	ignoredTags := allTags.Ignore(oldTags).Ignore(newTags)
+	sysTags := allTags.Removed(allTags.IgnoreAws())
 
-	if len(newTags)+len(ignoredTags) > 0 {
+	if len(newTags)+len(sysTags) > 0 {
 		input := &s3.PutBucketTaggingInput{
 			Bucket: aws.String(identifier),
 			Tagging: &s3.Tagging{
-				TagSet: newTags.Merge(ignoredTags).S3Tags(),
+				TagSet: newTags.Merge(sysTags).S3Tags(),
 			},
 		}
 
@@ -64,7 +63,7 @@ func S3BucketUpdateTags(conn *s3.S3, identifier string, oldTagsMap interface{}, 
 		if err != nil {
 			return fmt.Errorf("error setting resource tags (%s): %w", identifier, err)
 		}
-	} else if len(oldTags) > 0 && len(ignoredTags) == 0 {
+	} else if len(oldTags) > 0 && len(sysTags) == 0 {
 		input := &s3.DeleteBucketTaggingInput{
 			Bucket: aws.String(identifier),
 		}
@@ -88,10 +87,6 @@ func S3ObjectListTags(conn *s3.S3, bucket, key string) (KeyValueTags, error) {
 
 	output, err := conn.GetObjectTagging(input)
 
-	if tfawserr.ErrCodeEquals(err, tfs3.ErrCodeNoSuchTagSet) {
-		return New(nil), nil
-	}
-
 	if err != nil {
 		return New(nil), err
 	}
@@ -104,21 +99,12 @@ func S3ObjectUpdateTags(conn *s3.S3, bucket, key string, oldTagsMap interface{},
 	oldTags := New(oldTagsMap)
 	newTags := New(newTagsMap)
 
-	// We need to also consider any existing ignored tags.
-	allTags, err := S3ObjectListTags(conn, bucket, key)
-
-	if err != nil {
-		return fmt.Errorf("error listing resource tags (%s/%s): %w", bucket, key, err)
-	}
-
-	ignoredTags := allTags.Ignore(oldTags).Ignore(newTags)
-
-	if len(newTags)+len(ignoredTags) > 0 {
+	if len(newTags) > 0 {
 		input := &s3.PutObjectTaggingInput{
 			Bucket: aws.String(bucket),
 			Key:    aws.String(key),
 			Tagging: &s3.Tagging{
-				TagSet: newTags.Merge(ignoredTags).IgnoreAws().S3Tags(),
+				TagSet: newTags.IgnoreAws().S3Tags(),
 			},
 		}
 
@@ -127,7 +113,7 @@ func S3ObjectUpdateTags(conn *s3.S3, bucket, key string, oldTagsMap interface{},
 		if err != nil {
 			return fmt.Errorf("error setting resource tags (%s/%s): %w", bucket, key, err)
 		}
-	} else if len(oldTags) > 0 && len(ignoredTags) == 0 {
+	} else if len(oldTags) > 0 {
 		input := &s3.DeleteObjectTaggingInput{
 			Bucket: aws.String(bucket),
 			Key:    aws.String(key),

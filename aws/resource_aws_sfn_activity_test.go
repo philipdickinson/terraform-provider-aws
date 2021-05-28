@@ -8,9 +8,9 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/sfn"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccAWSSfnActivity_basic(t *testing.T) {
@@ -150,10 +150,9 @@ func testAccAWSSfnActivityBasicConfigTags1(rName, tag1Key, tag1Value string) str
 	return fmt.Sprintf(`
 resource "aws_sfn_activity" "test" {
   name = "%s"
-
   tags = {
-    %q = %q
-  }
+	%q = %q
+}
 }
 `, rName, tag1Key, tag1Value)
 }
@@ -162,11 +161,10 @@ func testAccAWSSfnActivityBasicConfigTags2(rName, tag1Key, tag1Value, tag2Key, t
 	return fmt.Sprintf(`
 resource "aws_sfn_activity" "test" {
   name = "%s"
-
   tags = {
-    %q = %q
-    %q = %q
-  }
+	%q = %q
+	%q = %q
+}
 }
 `, rName, tag1Key, tag1Value, tag2Key, tag2Value)
 }

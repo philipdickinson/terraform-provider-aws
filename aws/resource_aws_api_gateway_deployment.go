@@ -7,8 +7,9 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/arn"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/apigateway"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 func resourceAwsApiGatewayDeployment() *schema.Resource {
@@ -40,13 +41,6 @@ func resourceAwsApiGatewayDeployment() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
-			},
-
-			"triggers": {
-				Type:     schema.TypeMap,
-				Optional: true,
-				ForceNew: true,
-				Elem:     &schema.Schema{Type: schema.TypeString},
 			},
 
 			"variables": {
@@ -96,7 +90,7 @@ func resourceAwsApiGatewayDeploymentCreate(d *schema.ResourceData, meta interfac
 		return fmt.Errorf("Error creating API Gateway Deployment: %s", err)
 	}
 
-	d.SetId(aws.StringValue(deployment.Id))
+	d.SetId(*deployment.Id)
 	log.Printf("[DEBUG] API Gateway Deployment ID: %s", d.Id())
 
 	return resourceAwsApiGatewayDeploymentRead(d, meta)
@@ -112,7 +106,7 @@ func resourceAwsApiGatewayDeploymentRead(d *schema.ResourceData, meta interface{
 		DeploymentId: aws.String(d.Id()),
 	})
 	if err != nil {
-		if isAWSErr(err, apigateway.ErrCodeNotFoundException, "") {
+		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "NotFoundException" {
 			log.Printf("[WARN] API Gateway Deployment (%s) not found, removing from state", d.Id())
 			d.SetId("")
 			return nil
@@ -147,7 +141,7 @@ func resourceAwsApiGatewayDeploymentUpdateOperations(d *schema.ResourceData) []*
 
 	if d.HasChange("description") {
 		operations = append(operations, &apigateway.PatchOperation{
-			Op:    aws.String(apigateway.OpReplace),
+			Op:    aws.String("replace"),
 			Path:  aws.String("/description"),
 			Value: aws.String(d.Get("description").(string)),
 		})

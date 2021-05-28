@@ -6,22 +6,24 @@ import (
 	"sort"
 	"testing"
 
+	"regexp"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/elastictranscoder"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccAWSElasticTranscoderPipeline_basic(t *testing.T) {
 	pipeline := &elastictranscoder.Pipeline{}
-	resourceName := "aws_elastictranscoder_pipeline.test"
+	resourceName := "aws_elastictranscoder_pipeline.bar"
 	rName := acctest.RandomWithPrefix("tf-acc-test")
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:      func() { testAccPreCheck(t); testAccPreCheckAWSElasticTranscoder(t) },
-		IDRefreshName: resourceName,
+		IDRefreshName: "aws_elastictranscoder_pipeline.bar",
 		Providers:     testAccProviders,
 		CheckDestroy:  testAccCheckElasticTranscoderPipelineDestroy,
 		Steps: []resource.TestStep{
@@ -42,27 +44,22 @@ func TestAccAWSElasticTranscoderPipeline_basic(t *testing.T) {
 
 func TestAccAWSElasticTranscoderPipeline_kmsKey(t *testing.T) {
 	pipeline := &elastictranscoder.Pipeline{}
-	resourceName := "aws_elastictranscoder_pipeline.test"
-	rName := acctest.RandomWithPrefix("tf-acc-test")
-	keyResourceName := "aws_kms_key.test"
+	ri := acctest.RandInt()
+	config := fmt.Sprintf(awsElasticTranscoderPipelineConfigKmsKey, ri, ri, ri)
+	keyRegex := regexp.MustCompile(`^arn:aws:([a-zA-Z0-9\-])+:([a-z]{2}-[a-z]+-\d{1})?:(\d{12})?:(.*)$`)
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:      func() { testAccPreCheck(t); testAccPreCheckAWSElasticTranscoder(t) },
-		IDRefreshName: resourceName,
+		IDRefreshName: "aws_elastictranscoder_pipeline.bar",
 		Providers:     testAccProviders,
 		CheckDestroy:  testAccCheckElasticTranscoderPipelineDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: awsElasticTranscoderPipelineConfigKmsKey(rName),
+				Config: config,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckAWSElasticTranscoderPipelineExists(resourceName, pipeline),
-					resource.TestCheckResourceAttrPair(resourceName, "aws_kms_key_arn", keyResourceName, "arn"),
+					testAccCheckAWSElasticTranscoderPipelineExists("aws_elastictranscoder_pipeline.bar", pipeline),
+					resource.TestMatchResourceAttr("aws_elastictranscoder_pipeline.bar", "aws_kms_key_arn", keyRegex),
 				),
-			},
-			{
-				ResourceName:      resourceName,
-				ImportState:       true,
-				ImportStateVerify: true,
 			},
 		},
 	})
@@ -70,33 +67,28 @@ func TestAccAWSElasticTranscoderPipeline_kmsKey(t *testing.T) {
 
 func TestAccAWSElasticTranscoderPipeline_notifications(t *testing.T) {
 	pipeline := elastictranscoder.Pipeline{}
-	resourceName := "aws_elastictranscoder_pipeline.test"
 
-	rName := acctest.RandomWithPrefix("tf-acc-test")
+	rInt := acctest.RandInt()
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:      func() { testAccPreCheck(t); testAccPreCheckAWSElasticTranscoder(t) },
-		IDRefreshName: resourceName,
+		IDRefreshName: "aws_elastictranscoder_pipeline.bar",
 		Providers:     testAccProviders,
 		CheckDestroy:  testAccCheckElasticTranscoderPipelineDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: awsElasticTranscoderNotifications(rName),
+				Config: awsElasticTranscoderNotifications(rInt),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckAWSElasticTranscoderPipelineExists(resourceName, &pipeline),
+					testAccCheckAWSElasticTranscoderPipelineExists("aws_elastictranscoder_pipeline.bar", &pipeline),
 					testAccCheckAWSElasticTranscoderPipeline_notifications(&pipeline, []string{"warning", "completed"}),
 				),
 			},
-			{
-				ResourceName:      resourceName,
-				ImportState:       true,
-				ImportStateVerify: true,
-			},
+
 			// update and check that we have 1 less notification
 			{
-				Config: awsElasticTranscoderNotifications_update(rName),
+				Config: awsElasticTranscoderNotifications_update(rInt),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckAWSElasticTranscoderPipelineExists(resourceName, &pipeline),
+					testAccCheckAWSElasticTranscoderPipelineExists("aws_elastictranscoder_pipeline.bar", &pipeline),
 					testAccCheckAWSElasticTranscoderPipeline_notifications(&pipeline, []string{"completed"}),
 				),
 			},
@@ -140,31 +132,25 @@ func testAccCheckAWSElasticTranscoderPipeline_notifications(
 
 func TestAccAWSElasticTranscoderPipeline_withContentConfig(t *testing.T) {
 	pipeline := &elastictranscoder.Pipeline{}
-	resourceName := "aws_elastictranscoder_pipeline.test"
 
-	rName := acctest.RandomWithPrefix("tf-acc-test")
+	rInt := acctest.RandInt()
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:      func() { testAccPreCheck(t); testAccPreCheckAWSElasticTranscoder(t) },
-		IDRefreshName: resourceName,
+		IDRefreshName: "aws_elastictranscoder_pipeline.bar",
 		Providers:     testAccProviders,
 		CheckDestroy:  testAccCheckElasticTranscoderPipelineDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: awsElasticTranscoderPipelineWithContentConfig(rName),
+				Config: awsElasticTranscoderPipelineWithContentConfig(rInt),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckAWSElasticTranscoderPipelineExists(resourceName, pipeline),
+					testAccCheckAWSElasticTranscoderPipelineExists("aws_elastictranscoder_pipeline.bar", pipeline),
 				),
 			},
 			{
-				ResourceName:      resourceName,
-				ImportState:       true,
-				ImportStateVerify: true,
-			},
-			{
-				Config: awsElasticTranscoderPipelineWithContentConfigUpdate(rName),
+				Config: awsElasticTranscoderPipelineWithContentConfigUpdate(rInt),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckAWSElasticTranscoderPipelineExists(resourceName, pipeline),
+					testAccCheckAWSElasticTranscoderPipelineExists("aws_elastictranscoder_pipeline.bar", pipeline),
 				),
 			},
 		},
@@ -173,48 +159,20 @@ func TestAccAWSElasticTranscoderPipeline_withContentConfig(t *testing.T) {
 
 func TestAccAWSElasticTranscoderPipeline_withPermissions(t *testing.T) {
 	pipeline := &elastictranscoder.Pipeline{}
-	resourceName := "aws_elastictranscoder_pipeline.test"
 
-	rName := acctest.RandomWithPrefix("tf-acc-test")
+	rInt := acctest.RandInt()
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:      func() { testAccPreCheck(t); testAccPreCheckAWSElasticTranscoder(t) },
-		IDRefreshName: resourceName,
+		IDRefreshName: "aws_elastictranscoder_pipeline.baz",
 		Providers:     testAccProviders,
 		CheckDestroy:  testAccCheckElasticTranscoderPipelineDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: awsElasticTranscoderPipelineWithPerms(rName),
+				Config: awsElasticTranscoderPipelineWithPerms(rInt),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckAWSElasticTranscoderPipelineExists(resourceName, pipeline),
+					testAccCheckAWSElasticTranscoderPipelineExists("aws_elastictranscoder_pipeline.baz", pipeline),
 				),
-			},
-			{
-				ResourceName:      resourceName,
-				ImportState:       true,
-				ImportStateVerify: true,
-			},
-		},
-	})
-}
-
-func TestAccAWSElasticTranscoderPipeline_disappears(t *testing.T) {
-	pipeline := &elastictranscoder.Pipeline{}
-	resourceName := "aws_elastictranscoder_pipeline.test"
-	rName := acctest.RandomWithPrefix("tf-acc-test")
-
-	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckAWSElasticTranscoder(t) },
-		Providers:    testAccProviders,
-		CheckDestroy: testAccCheckElasticTranscoderPipelineDestroy,
-		Steps: []resource.TestStep{
-			{
-				Config: awsElasticTranscoderPipelineConfigBasic(rName),
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckAWSElasticTranscoderPipelineExists(resourceName, pipeline),
-					testAccCheckAWSElasticTranscoderPipelineDisappears(pipeline),
-				),
-				ExpectNonEmptyPlan: true,
 			},
 		},
 	})
@@ -244,18 +202,6 @@ func testAccCheckAWSElasticTranscoderPipelineExists(n string, res *elastictransc
 		*res = *out.Pipeline
 
 		return nil
-	}
-}
-
-func testAccCheckAWSElasticTranscoderPipelineDisappears(res *elastictranscoder.Pipeline) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
-		conn := testAccProvider.Meta().(*AWSClient).elastictranscoderconn
-
-		_, err := conn.DeletePipeline(&elastictranscoder.DeletePipelineInput{
-			Id: res.Id,
-		})
-
-		return err
 	}
 }
 
@@ -308,14 +254,14 @@ func testAccPreCheckAWSElasticTranscoder(t *testing.T) {
 
 func awsElasticTranscoderPipelineConfigBasic(rName string) string {
 	return fmt.Sprintf(`
-resource "aws_elastictranscoder_pipeline" "test" {
-  input_bucket  = aws_s3_bucket.test.bucket
-  output_bucket = aws_s3_bucket.test.bucket
+resource "aws_elastictranscoder_pipeline" "bar" {
+  input_bucket  = "${aws_s3_bucket.test_bucket.bucket}"
+  output_bucket = "${aws_s3_bucket.test_bucket.bucket}"
   name          = %[1]q
-  role          = aws_iam_role.test.arn
+  role          = "${aws_iam_role.test_role.arn}"
 }
 
-resource "aws_iam_role" "test" {
+resource "aws_iam_role" "test_role" {
   name = %[1]q
 
   assume_role_policy = <<EOF
@@ -335,18 +281,17 @@ resource "aws_iam_role" "test" {
 EOF
 }
 
-resource "aws_s3_bucket" "test" {
+resource "aws_s3_bucket" "test_bucket" {
   bucket = %[1]q
   acl    = "private"
 }
 `, rName)
 }
 
-func awsElasticTranscoderPipelineConfigKmsKey(rName string) string {
-	return fmt.Sprintf(`
-resource "aws_kms_key" "test" {
-  description = %[1]q
-  policy      = <<POLICY
+const awsElasticTranscoderPipelineConfigKmsKey = `
+resource "aws_kms_key" "foo" {
+  description = "Terraform acc test %d"
+  policy = <<POLICY
 {
   "Version": "2012-10-17",
   "Id": "kms-tf-1",
@@ -365,16 +310,16 @@ resource "aws_kms_key" "test" {
 POLICY
 }
 
-resource "aws_elastictranscoder_pipeline" "test" {
-  input_bucket    = aws_s3_bucket.test.bucket
-  output_bucket   = aws_s3_bucket.test.bucket
-  name            = %[1]q
-  role            = aws_iam_role.test.arn
-  aws_kms_key_arn = aws_kms_key.test.arn
+resource "aws_elastictranscoder_pipeline" "bar" {
+  input_bucket    = "${aws_s3_bucket.test_bucket.bucket}"
+  output_bucket   = "${aws_s3_bucket.test_bucket.bucket}"
+  name            = "aws_elastictranscoder_pipeline_tf_test_"
+  role            = "${aws_iam_role.test_role.arn}"
+  aws_kms_key_arn = "${aws_kms_key.foo.arn}"
 }
 
-resource "aws_iam_role" "test" {
-  name = %[1]q
+resource "aws_iam_role" "test_role" {
+  name = "tf_test_elastictranscoder_pipeline_%d"
 
   assume_role_policy = <<EOF
 {
@@ -393,33 +338,32 @@ resource "aws_iam_role" "test" {
 EOF
 }
 
-resource "aws_s3_bucket" "test" {
-  bucket = %[1]q
+resource "aws_s3_bucket" "test_bucket" {
+  bucket = "tf-test-aws-elasticencoder-pipeline-%d"
   acl    = "private"
 }
-`, rName)
-}
+`
 
-func awsElasticTranscoderPipelineWithContentConfig(rName string) string {
+func awsElasticTranscoderPipelineWithContentConfig(rInt int) string {
 	return fmt.Sprintf(`
-resource "aws_elastictranscoder_pipeline" "test" {
-  input_bucket = aws_s3_bucket.content_bucket.bucket
-  name         = %[1]q
-  role         = aws_iam_role.test.arn
+resource "aws_elastictranscoder_pipeline" "bar" {
+  input_bucket = "${aws_s3_bucket.content_bucket.bucket}"
+  name         = "tf_test_pipeline_%d"
+  role         = "${aws_iam_role.test_role.arn}"
 
   content_config {
-    bucket        = aws_s3_bucket.content_bucket.bucket
+    bucket        = "${aws_s3_bucket.content_bucket.bucket}"
     storage_class = "Standard"
   }
 
   thumbnail_config {
-    bucket        = aws_s3_bucket.content_bucket.bucket
+    bucket        = "${aws_s3_bucket.content_bucket.bucket}"
     storage_class = "Standard"
   }
 }
 
-resource "aws_iam_role" "test" {
-  name = %[1]q
+resource "aws_iam_role" "test_role" {
+  name = "tf_pipeline_role_%d"
 
   assume_role_policy = <<EOF
 {
@@ -439,42 +383,42 @@ EOF
 }
 
 resource "aws_s3_bucket" "content_bucket" {
-  bucket = "%[1]s-content"
+  bucket = "tf-test-pipeline-content-%d"
   acl    = "private"
 }
 
 resource "aws_s3_bucket" "input_bucket" {
-  bucket = "%[1]s-input"
+  bucket = "tf-test-pipeline-input-%d"
   acl    = "private"
 }
 
 resource "aws_s3_bucket" "thumb_bucket" {
-  bucket = "%[1]s-thumb"
+  bucket = "tf-test-pipeline-thumb-%d"
   acl    = "private"
 }
-`, rName)
+`, rInt, rInt, rInt, rInt, rInt)
 }
 
-func awsElasticTranscoderPipelineWithContentConfigUpdate(rName string) string {
+func awsElasticTranscoderPipelineWithContentConfigUpdate(rInt int) string {
 	return fmt.Sprintf(`
-resource "aws_elastictranscoder_pipeline" "test" {
-  input_bucket = aws_s3_bucket.input_bucket.bucket
-  name         = %[1]q
-  role         = aws_iam_role.test.arn
+resource "aws_elastictranscoder_pipeline" "bar" {
+  input_bucket = "${aws_s3_bucket.input_bucket.bucket}"
+  name         = "tf_test_pipeline_%d"
+  role         = "${aws_iam_role.test_role.arn}"
 
   content_config {
-    bucket        = aws_s3_bucket.content_bucket.bucket
+    bucket        = "${aws_s3_bucket.content_bucket.bucket}"
     storage_class = "Standard"
   }
 
   thumbnail_config {
-    bucket        = aws_s3_bucket.thumb_bucket.bucket
+    bucket        = "${aws_s3_bucket.thumb_bucket.bucket}"
     storage_class = "Standard"
   }
 }
 
-resource "aws_iam_role" "test" {
-  name = %[1]q
+resource "aws_iam_role" "test_role" {
+  name = "tf_pipeline_role_%d"
 
   assume_role_policy = <<EOF
 {
@@ -494,31 +438,31 @@ EOF
 }
 
 resource "aws_s3_bucket" "content_bucket" {
-  bucket = "%[1]s-content"
+  bucket = "tf-test-pipeline-content-%d"
   acl    = "private"
 }
 
 resource "aws_s3_bucket" "input_bucket" {
-  bucket = "%[1]s-input"
+  bucket = "tf-test-pipeline-input-%d"
   acl    = "private"
 }
 
 resource "aws_s3_bucket" "thumb_bucket" {
-  bucket = "%[1]s-thumb"
+  bucket = "tf-test-pipeline-thumb-%d"
   acl    = "private"
 }
-`, rName)
+`, rInt, rInt, rInt, rInt, rInt)
 }
 
-func awsElasticTranscoderPipelineWithPerms(rName string) string {
+func awsElasticTranscoderPipelineWithPerms(rInt int) string {
 	return fmt.Sprintf(`
-resource "aws_elastictranscoder_pipeline" "test" {
-  input_bucket = aws_s3_bucket.test.bucket
-  name         = %[1]q
-  role         = aws_iam_role.test.arn
+resource "aws_elastictranscoder_pipeline" "baz" {
+  input_bucket = "${aws_s3_bucket.content_bucket.bucket}"
+  name         = "tf_test_pipeline_%d"
+  role         = "${aws_iam_role.test_role.arn}"
 
   content_config {
-    bucket        = aws_s3_bucket.test.bucket
+    bucket        = "${aws_s3_bucket.content_bucket.bucket}"
     storage_class = "Standard"
   }
 
@@ -529,7 +473,7 @@ resource "aws_elastictranscoder_pipeline" "test" {
   }
 
   thumbnail_config {
-    bucket        = aws_s3_bucket.test.bucket
+    bucket        = "${aws_s3_bucket.content_bucket.bucket}"
     storage_class = "Standard"
   }
 
@@ -540,8 +484,8 @@ resource "aws_elastictranscoder_pipeline" "test" {
   }
 }
 
-resource "aws_iam_role" "test" {
-  name = %[1]q
+resource "aws_iam_role" "test_role" {
+  name = "tf_pipeline_role_%d"
 
   assume_role_policy = <<EOF
 {
@@ -560,29 +504,29 @@ resource "aws_iam_role" "test" {
 EOF
 }
 
-resource "aws_s3_bucket" "test" {
-  bucket = %[1]q
+resource "aws_s3_bucket" "content_bucket" {
+  bucket = "tf-test-transcoding-pipe-%d"
   acl    = "private"
 }
-`, rName)
+`, rInt, rInt, rInt)
 }
 
-func awsElasticTranscoderNotifications(rName string) string {
+func awsElasticTranscoderNotifications(r int) string {
 	return fmt.Sprintf(`
-resource "aws_elastictranscoder_pipeline" "test" {
-  input_bucket  = aws_s3_bucket.test.bucket
-  output_bucket = aws_s3_bucket.test.bucket
-  name          = %[1]q
-  role          = aws_iam_role.test.arn
+resource "aws_elastictranscoder_pipeline" "bar" {
+  input_bucket  = "${aws_s3_bucket.test_bucket.bucket}"
+  output_bucket = "${aws_s3_bucket.test_bucket.bucket}"
+  name          = "tf-test-transcoder-%d"
+  role          = "${aws_iam_role.test_role.arn}"
 
   notifications {
-    completed = aws_sns_topic.test.arn
-    warning   = aws_sns_topic.test.arn
+    completed = "${aws_sns_topic.topic_example.arn}"
+    warning   = "${aws_sns_topic.topic_example.arn}"
   }
 }
 
-resource "aws_iam_role" "test" {
-  name = %[1]q
+resource "aws_iam_role" "test_role" {
+  name = "tf-test-transcoder-%d"
 
   assume_role_policy = <<EOF
 {
@@ -601,13 +545,13 @@ resource "aws_iam_role" "test" {
 EOF
 }
 
-resource "aws_s3_bucket" "test" {
-  bucket = %[1]q
+resource "aws_s3_bucket" "test_bucket" {
+  bucket = "tf-test-transcoder-%d"
   acl    = "private"
 }
 
-resource "aws_sns_topic" "test" {
-  name = %[1]q
+resource "aws_sns_topic" "topic_example" {
+  name = "tf-test-transcoder-%d"
 
   policy = <<EOF
 {
@@ -625,24 +569,24 @@ resource "aws_sns_topic" "test" {
 }
 EOF
 }
-`, rName)
+`, r, r, r, r)
 }
 
-func awsElasticTranscoderNotifications_update(rName string) string {
+func awsElasticTranscoderNotifications_update(r int) string {
 	return fmt.Sprintf(`
-resource "aws_elastictranscoder_pipeline" "test" {
-  input_bucket  = aws_s3_bucket.test.bucket
-  output_bucket = aws_s3_bucket.test.bucket
-  name          = %[1]q
-  role          = aws_iam_role.test.arn
+resource "aws_elastictranscoder_pipeline" "bar" {
+  input_bucket  = "${aws_s3_bucket.test_bucket.bucket}"
+  output_bucket = "${aws_s3_bucket.test_bucket.bucket}"
+  name          = "tf-test-transcoder-%d"
+  role          = "${aws_iam_role.test_role.arn}"
 
   notifications {
-    completed = aws_sns_topic.test.arn
+    completed = "${aws_sns_topic.topic_example.arn}"
   }
 }
 
-resource "aws_iam_role" "test" {
-  name = %[1]q
+resource "aws_iam_role" "test_role" {
+  name = "tf-test-transcoder-%d"
 
   assume_role_policy = <<EOF
 {
@@ -661,13 +605,13 @@ resource "aws_iam_role" "test" {
 EOF
 }
 
-resource "aws_s3_bucket" "test" {
-  bucket = %[1]q
+resource "aws_s3_bucket" "test_bucket" {
+  bucket = "tf-test-transcoder-%d"
   acl    = "private"
 }
 
-resource "aws_sns_topic" "test" {
-  name = %[1]q
+resource "aws_sns_topic" "topic_example" {
+  name = "tf-test-transcoder-%d"
 
   policy = <<EOF
 {
@@ -685,5 +629,5 @@ resource "aws_sns_topic" "test" {
 }
 EOF
 }
-`, rName)
+`, r, r, r, r)
 }

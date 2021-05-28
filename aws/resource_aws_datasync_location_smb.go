@@ -6,8 +6,8 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/datasync"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 	"github.com/terraform-providers/terraform-provider-aws/aws/internal/keyvaluetags"
 )
 
@@ -131,7 +131,6 @@ func resourceAwsDataSyncLocationSmbCreate(d *schema.ResourceData, meta interface
 
 func resourceAwsDataSyncLocationSmbRead(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).datasyncconn
-	ignoreTagsConfig := meta.(*AWSClient).IgnoreTagsConfig
 
 	input := &datasync.DescribeLocationSmbInput{
 		LocationArn: aws.String(d.Id()),
@@ -167,7 +166,7 @@ func resourceAwsDataSyncLocationSmbRead(d *schema.ResourceData, meta interface{}
 		return fmt.Errorf("error parsing Location SMB (%s) URI (%s): %s", d.Id(), aws.StringValue(output.LocationUri), err)
 	}
 
-	d.Set("agent_arns", flattenStringSet(output.AgentArns))
+	d.Set("agent_arns", schema.NewSet(schema.HashString, flattenStringList(output.AgentArns)))
 
 	d.Set("arn", output.LocationArn)
 
@@ -179,7 +178,7 @@ func resourceAwsDataSyncLocationSmbRead(d *schema.ResourceData, meta interface{}
 
 	d.Set("subdirectory", subdirectory)
 
-	if err := d.Set("tags", keyvaluetags.DatasyncKeyValueTags(tagsOutput.Tags).IgnoreAws().IgnoreConfig(ignoreTagsConfig).Map()); err != nil {
+	if err := d.Set("tags", keyvaluetags.DatasyncKeyValueTags(tagsOutput.Tags).IgnoreAws().Map()); err != nil {
 		return fmt.Errorf("error setting tags: %s", err)
 	}
 

@@ -12,9 +12,10 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/elbv2"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/hashcode"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
 func resourceAwsLbbListenerRule() *schema.Resource {
@@ -70,64 +71,13 @@ func resourceAwsLbbListenerRule() *schema.Resource {
 						"target_group_arn": {
 							Type:             schema.TypeString,
 							Optional:         true,
-							DiffSuppressFunc: suppressIfActionTypeNot(elbv2.ActionTypeEnumForward),
-						},
-
-						"forward": {
-							Type:             schema.TypeList,
-							Optional:         true,
-							DiffSuppressFunc: suppressIfActionTypeNot(elbv2.ActionTypeEnumForward),
-							MaxItems:         1,
-							Elem: &schema.Resource{
-								Schema: map[string]*schema.Schema{
-									"target_group": {
-										Type:     schema.TypeSet,
-										MinItems: 2,
-										MaxItems: 5,
-										Required: true,
-										Elem: &schema.Resource{
-											Schema: map[string]*schema.Schema{
-												"arn": {
-													Type:     schema.TypeString,
-													Required: true,
-												},
-												"weight": {
-													Type:         schema.TypeInt,
-													ValidateFunc: validation.IntBetween(0, 999),
-													Default:      1,
-													Optional:     true,
-												},
-											},
-										},
-									},
-									"stickiness": {
-										Type:             schema.TypeList,
-										Optional:         true,
-										DiffSuppressFunc: suppressMissingOptionalConfigurationBlock,
-										MaxItems:         1,
-										Elem: &schema.Resource{
-											Schema: map[string]*schema.Schema{
-												"enabled": {
-													Type:     schema.TypeBool,
-													Optional: true,
-													Default:  false,
-												},
-												"duration": {
-													Type:         schema.TypeInt,
-													Required:     true,
-													ValidateFunc: validation.IntBetween(1, 604800),
-												},
-											},
-										},
-									},
-								},
-							},
+							DiffSuppressFunc: suppressIfActionTypeNot("forward"),
 						},
 
 						"redirect": {
 							Type:             schema.TypeList,
 							Optional:         true,
-							DiffSuppressFunc: suppressIfActionTypeNot(elbv2.ActionTypeEnumRedirect),
+							DiffSuppressFunc: suppressIfActionTypeNot("redirect"),
 							MaxItems:         1,
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
@@ -181,7 +131,7 @@ func resourceAwsLbbListenerRule() *schema.Resource {
 						"fixed_response": {
 							Type:             schema.TypeList,
 							Optional:         true,
-							DiffSuppressFunc: suppressIfActionTypeNot(elbv2.ActionTypeEnumFixedResponse),
+							DiffSuppressFunc: suppressIfActionTypeNot("fixed-response"),
 							MaxItems:         1,
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
@@ -222,7 +172,6 @@ func resourceAwsLbbListenerRule() *schema.Resource {
 									"authentication_request_extra_params": {
 										Type:     schema.TypeMap,
 										Optional: true,
-										Elem:     &schema.Schema{Type: schema.TypeString},
 									},
 									"on_unauthenticated_request": {
 										Type:     schema.TypeString,
@@ -275,7 +224,6 @@ func resourceAwsLbbListenerRule() *schema.Resource {
 									"authentication_request_extra_params": {
 										Type:     schema.TypeMap,
 										Optional: true,
-										Elem:     &schema.Schema{Type: schema.TypeString},
 									},
 									"authorization_endpoint": {
 										Type:     schema.TypeString,
@@ -336,18 +284,31 @@ func resourceAwsLbbListenerRule() *schema.Resource {
 			"condition": {
 				Type:     schema.TypeSet,
 				Required: true,
+				Set:      lbListenerRuleConditionSetHash,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
+						"field": {
+							Type:     schema.TypeString,
+							Optional: true,
+							Computed: true,
+							ValidateFunc: validation.StringInSlice([]string{
+								"host-header",
+								"path-pattern",
+							}, true),
+							Deprecated: "use 'host_header' or 'path_pattern' attribute instead",
+						},
 						"host_header": {
 							Type:     schema.TypeList,
 							MaxItems: 1,
 							Optional: true,
+							Computed: true, // Deprecated: remove Computed
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
 									"values": {
-										Type:     schema.TypeSet,
-										Required: true,
-										MinItems: 1,
+										Type: schema.TypeSet,
+										// Deprecated: Change Optional & Computed to Required in next major version of the provider
+										Optional: true,
+										Computed: true,
 										Elem: &schema.Schema{
 											Type:         schema.TypeString,
 											ValidateFunc: validation.StringLenBetween(1, 128),
@@ -402,12 +363,14 @@ func resourceAwsLbbListenerRule() *schema.Resource {
 							Type:     schema.TypeList,
 							MaxItems: 1,
 							Optional: true,
+							Computed: true, // Deprecated: remove Computed
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
 									"values": {
-										Type:     schema.TypeSet,
-										Required: true,
-										MinItems: 1,
+										Type: schema.TypeSet,
+										// Deprecated: Change Optional & Computed to Required in next major version of the provider
+										Optional: true,
+										Computed: true,
 										Elem: &schema.Schema{
 											Type:         schema.TypeString,
 											ValidateFunc: validation.StringLenBetween(1, 128),
@@ -432,6 +395,7 @@ func resourceAwsLbbListenerRule() *schema.Resource {
 									},
 								},
 							},
+							Set: lbListenerRuleConditionQueryStringHash,
 						},
 						"source_ip": {
 							Type:     schema.TypeList,
@@ -451,11 +415,108 @@ func resourceAwsLbbListenerRule() *schema.Resource {
 								},
 							},
 						},
+						"values": {
+							Type:     schema.TypeList,
+							MaxItems: 1,
+							Elem: &schema.Schema{
+								Type:         schema.TypeString,
+								ValidateFunc: validation.StringLenBetween(1, 128),
+							},
+							Optional:   true,
+							Computed:   true,
+							Deprecated: "use 'host_header' or 'path_pattern' attribute instead",
+						},
 					},
 				},
 			},
 		},
 	}
+}
+
+/* DEPRECATED Backwards compatibility: This primarily exists to set a hash that handles the values to host_header or path_pattern migration.
+Can probably be removed on the next major version of the provider.
+*/
+func lbListenerRuleConditionSetHash(v interface{}) int {
+	if v == nil {
+		return 0
+	}
+
+	var field string
+	var buf strings.Builder
+
+	m := v.(map[string]interface{})
+
+	if hostHeader, ok := m["host_header"].([]interface{}); ok && len(hostHeader) > 0 {
+		if hostHeader[0] != nil {
+			field = "host-header"
+			values := hostHeader[0].(map[string]interface{})["values"].(*schema.Set)
+			for _, l := range values.List() {
+				fmt.Fprint(&buf, l, "-")
+			}
+		}
+	} else if m["field"].(string) == "host-header" {
+		// Backwards compatibility
+		field = "host-header"
+		for _, l := range m["values"].([]interface{}) {
+			fmt.Fprint(&buf, l, "-")
+		}
+	}
+
+	if httpHeader, ok := m["http_header"].([]interface{}); ok && len(httpHeader) > 0 && httpHeader[0] != nil {
+		field = "http-header"
+		httpHeaderMap := httpHeader[0].(map[string]interface{})
+		fmt.Fprint(&buf, httpHeaderMap["http_header_name"].(string), ":")
+		httpHeaderValues := httpHeaderMap["values"].(*schema.Set)
+		for _, l := range httpHeaderValues.List() {
+			fmt.Fprint(&buf, l, "-")
+		}
+	}
+
+	if httpRequestMethod, ok := m["http_request_method"].([]interface{}); ok && len(httpRequestMethod) > 0 && httpRequestMethod[0] != nil {
+		field = "http-request-method"
+		values := httpRequestMethod[0].(map[string]interface{})["values"].(*schema.Set)
+		for _, l := range values.List() {
+			fmt.Fprint(&buf, l, "-")
+		}
+	}
+
+	if pathPattern, ok := m["path_pattern"].([]interface{}); ok && len(pathPattern) > 0 {
+		if pathPattern[0] != nil {
+			field = "path-pattern"
+			values := pathPattern[0].(map[string]interface{})["values"].(*schema.Set)
+			for _, l := range values.List() {
+				fmt.Fprint(&buf, l, "-")
+			}
+		}
+	} else if m["field"].(string) == "path-pattern" {
+		// Backwards compatibility
+		field = "path-pattern"
+		for _, l := range m["values"].([]interface{}) {
+			fmt.Fprint(&buf, l, "-")
+		}
+	}
+
+	if queryString, ok := m["query_string"].(*schema.Set); ok && queryString.Len() > 0 {
+		field = "query-string"
+		for _, l := range queryString.List() {
+			fmt.Fprint(&buf, lbListenerRuleConditionQueryStringHash(l), "-")
+		}
+	}
+
+	if sourceIp, ok := m["source_ip"].([]interface{}); ok && len(sourceIp) > 0 && sourceIp[0] != nil {
+		field = "source-ip"
+		values := sourceIp[0].(map[string]interface{})["values"].(*schema.Set)
+		for _, l := range values.List() {
+			fmt.Fprint(&buf, l, "-")
+		}
+	}
+
+	return hashcode.String(fmt.Sprintf("%s-%s", field, buf.String()))
+}
+
+func lbListenerRuleConditionQueryStringHash(v interface{}) int {
+	m := v.(map[string]interface{})
+	return hashcode.String(fmt.Sprintf("%s-%s", m["key"], m["value"]))
 }
 
 func suppressIfActionTypeNot(t string) schema.SchemaDiffSuppressFunc {
@@ -496,12 +557,10 @@ func resourceAwsLbListenerRuleCreate(d *schema.ResourceData, meta interface{}) e
 		}
 
 		switch actionMap["type"].(string) {
-		case elbv2.ActionTypeEnumForward:
-			if err := lbListenerRuleActionForward(actionMap, action); err != nil {
-				return err
-			}
+		case "forward":
+			action.TargetGroupArn = aws.String(actionMap["target_group_arn"].(string))
 
-		case elbv2.ActionTypeEnumRedirect:
+		case "redirect":
 			redirectList := actionMap["redirect"].([]interface{})
 
 			if len(redirectList) == 1 {
@@ -519,7 +578,7 @@ func resourceAwsLbListenerRuleCreate(d *schema.ResourceData, meta interface{}) e
 				return errors.New("for actions of type 'redirect', you must specify a 'redirect' block")
 			}
 
-		case elbv2.ActionTypeEnumFixedResponse:
+		case "fixed-response":
 			fixedResponseList := actionMap["fixed_response"].([]interface{})
 
 			if len(fixedResponseList) == 1 {
@@ -534,7 +593,7 @@ func resourceAwsLbListenerRuleCreate(d *schema.ResourceData, meta interface{}) e
 				return errors.New("for actions of type 'fixed-response', you must specify a 'fixed_response' block")
 			}
 
-		case elbv2.ActionTypeEnumAuthenticateCognito:
+		case "authenticate-cognito":
 			authenticateCognitoList := actionMap["authenticate_cognito"].([]interface{})
 
 			if len(authenticateCognitoList) == 1 {
@@ -568,7 +627,7 @@ func resourceAwsLbListenerRuleCreate(d *schema.ResourceData, meta interface{}) e
 				return errors.New("for actions of type 'authenticate-cognito', you must specify a 'authenticate_cognito' block")
 			}
 
-		case elbv2.ActionTypeEnumAuthenticateOidc:
+		case "authenticate-oidc":
 			authenticateOidcList := actionMap["authenticate_oidc"].([]interface{})
 
 			if len(authenticateOidcList) == 1 {
@@ -621,7 +680,7 @@ func resourceAwsLbListenerRuleCreate(d *schema.ResourceData, meta interface{}) e
 		params.Priority = aws.Int64(int64(v.(int)))
 		resp, err = elbconn.CreateRule(params)
 		if err != nil {
-			return fmt.Errorf("Error creating LB Listener Rule: %w", err)
+			return fmt.Errorf("Error creating LB Listener Rule: %v", err)
 		}
 	} else {
 		var priority int64
@@ -644,13 +703,13 @@ func resourceAwsLbListenerRuleCreate(d *schema.ResourceData, meta interface{}) e
 		if isResourceTimeoutError(err) {
 			priority, err = highestListenerRulePriority(elbconn, listenerArn)
 			if err != nil {
-				return fmt.Errorf("Error getting highest listener rule priority: %w", err)
+				return fmt.Errorf("Error getting highest listener rule priority: %s", err)
 			}
 			params.Priority = aws.Int64(priority + 1)
 			resp, err = elbconn.CreateRule(params)
 		}
 		if err != nil {
-			return fmt.Errorf("Error creating LB Listener Rule: %w", err)
+			return fmt.Errorf("Error creating LB Listener Rule: %v", err)
 		}
 	}
 
@@ -692,7 +751,7 @@ func resourceAwsLbListenerRuleRead(d *schema.ResourceData, meta interface{}) err
 			d.SetId("")
 			return nil
 		}
-		return fmt.Errorf("Error retrieving Rules for listener %q: %w", d.Id(), err)
+		return fmt.Errorf("Error retrieving Rules for listener %q: %s", d.Id(), err)
 	}
 
 	if len(resp.Rules) != 1 {
@@ -711,7 +770,7 @@ func resourceAwsLbListenerRuleRead(d *schema.ResourceData, meta interface{}) err
 		d.Set("priority", 99999)
 	} else {
 		if priority, err := strconv.Atoi(aws.StringValue(rule.Priority)); err != nil {
-			return fmt.Errorf("Cannot convert rule priority %q to int: %w", aws.StringValue(rule.Priority), err)
+			return fmt.Errorf("Cannot convert rule priority %q to int: %s", aws.StringValue(rule.Priority), err)
 		} else {
 			d.Set("priority", priority)
 		}
@@ -727,33 +786,10 @@ func resourceAwsLbListenerRuleRead(d *schema.ResourceData, meta interface{}) err
 		actionMap["order"] = aws.Int64Value(action.Order)
 
 		switch actionMap["type"] {
-		case elbv2.ActionTypeEnumForward:
-			if aws.StringValue(action.TargetGroupArn) != "" {
-				actionMap["target_group_arn"] = aws.StringValue(action.TargetGroupArn)
-			} else {
-				targetGroups := make([]map[string]interface{}, 0, len(action.ForwardConfig.TargetGroups))
-				for _, targetGroup := range action.ForwardConfig.TargetGroups {
-					targetGroups = append(targetGroups,
-						map[string]interface{}{
-							"arn":    aws.StringValue(targetGroup.TargetGroupArn),
-							"weight": aws.Int64Value(targetGroup.Weight),
-						},
-					)
-				}
-				actionMap["forward"] = []map[string]interface{}{
-					{
-						"target_group": targetGroups,
-						"stickiness": []map[string]interface{}{
-							{
-								"enabled":  aws.BoolValue(action.ForwardConfig.TargetGroupStickinessConfig.Enabled),
-								"duration": aws.Int64Value(action.ForwardConfig.TargetGroupStickinessConfig.DurationSeconds),
-							},
-						},
-					},
-				}
-			}
+		case "forward":
+			actionMap["target_group_arn"] = aws.StringValue(action.TargetGroupArn)
 
-		case elbv2.ActionTypeEnumRedirect:
+		case "redirect":
 			actionMap["redirect"] = []map[string]interface{}{
 				{
 					"host":        aws.StringValue(action.RedirectConfig.Host),
@@ -765,7 +801,7 @@ func resourceAwsLbListenerRuleRead(d *schema.ResourceData, meta interface{}) err
 				},
 			}
 
-		case elbv2.ActionTypeEnumFixedResponse:
+		case "fixed-response":
 			actionMap["fixed_response"] = []map[string]interface{}{
 				{
 					"content_type": aws.StringValue(action.FixedResponseConfig.ContentType),
@@ -774,7 +810,7 @@ func resourceAwsLbListenerRuleRead(d *schema.ResourceData, meta interface{}) err
 				},
 			}
 
-		case elbv2.ActionTypeEnumAuthenticateCognito:
+		case "authenticate-cognito":
 			authenticationRequestExtraParams := make(map[string]interface{})
 			for key, value := range action.AuthenticateCognitoConfig.AuthenticationRequestExtraParams {
 				authenticationRequestExtraParams[key] = aws.StringValue(value)
@@ -793,7 +829,7 @@ func resourceAwsLbListenerRuleRead(d *schema.ResourceData, meta interface{}) err
 				},
 			}
 
-		case elbv2.ActionTypeEnumAuthenticateOidc:
+		case "authenticate-oidc":
 			authenticationRequestExtraParams := make(map[string]interface{})
 			for key, value := range action.AuthenticateOidcConfig.AuthenticationRequestExtraParams {
 				authenticationRequestExtraParams[key] = aws.StringValue(value)
@@ -828,7 +864,11 @@ func resourceAwsLbListenerRuleRead(d *schema.ResourceData, meta interface{}) err
 	for i, condition := range rule.Conditions {
 		conditionMap := make(map[string]interface{})
 
-		switch aws.StringValue(condition.Field) {
+		// Deprecated: remove in next major version of provider
+		conditionMap["field"] = aws.StringValue(condition.Field)
+		conditionMap["values"] = aws.StringValueSlice(condition.Values)
+
+		switch conditionMap["field"] {
 		case "host-header":
 			conditionMap["host_header"] = []interface{}{
 				map[string]interface{}{
@@ -866,7 +906,7 @@ func resourceAwsLbListenerRuleRead(d *schema.ResourceData, meta interface{}) err
 					"value": aws.StringValue(value.Value),
 				}
 			}
-			conditionMap["query_string"] = values
+			conditionMap["query_string"] = schema.NewSet(lbListenerRuleConditionQueryStringHash, values)
 
 		case "source-ip":
 			conditionMap["source_ip"] = []interface{}{
@@ -879,7 +919,7 @@ func resourceAwsLbListenerRuleRead(d *schema.ResourceData, meta interface{}) err
 		conditions[i] = conditionMap
 	}
 	if err := d.Set("condition", conditions); err != nil {
-		return fmt.Errorf("error setting condition: %w", err)
+		return fmt.Errorf("error setting condition: %s", err)
 	}
 
 	return nil
@@ -887,6 +927,8 @@ func resourceAwsLbListenerRuleRead(d *schema.ResourceData, meta interface{}) err
 
 func resourceAwsLbListenerRuleUpdate(d *schema.ResourceData, meta interface{}) error {
 	elbconn := meta.(*AWSClient).elbv2conn
+
+	d.Partial(true)
 
 	if d.HasChange("priority") {
 		params := &elbv2.SetRulePrioritiesInput{
@@ -902,6 +944,8 @@ func resourceAwsLbListenerRuleUpdate(d *schema.ResourceData, meta interface{}) e
 		if err != nil {
 			return err
 		}
+
+		d.SetPartial("priority")
 	}
 
 	requestUpdate := false
@@ -925,12 +969,10 @@ func resourceAwsLbListenerRuleUpdate(d *schema.ResourceData, meta interface{}) e
 			}
 
 			switch actionMap["type"].(string) {
-			case elbv2.ActionTypeEnumForward:
-				if err := lbListenerRuleActionForward(actionMap, action); err != nil {
-					return err
-				}
+			case "forward":
+				action.TargetGroupArn = aws.String(actionMap["target_group_arn"].(string))
 
-			case elbv2.ActionTypeEnumRedirect:
+			case "redirect":
 				redirectList := actionMap["redirect"].([]interface{})
 
 				if len(redirectList) == 1 {
@@ -948,7 +990,7 @@ func resourceAwsLbListenerRuleUpdate(d *schema.ResourceData, meta interface{}) e
 					return errors.New("for actions of type 'redirect', you must specify a 'redirect' block")
 				}
 
-			case elbv2.ActionTypeEnumFixedResponse:
+			case "fixed-response":
 				fixedResponseList := actionMap["fixed_response"].([]interface{})
 
 				if len(fixedResponseList) == 1 {
@@ -963,7 +1005,7 @@ func resourceAwsLbListenerRuleUpdate(d *schema.ResourceData, meta interface{}) e
 					return errors.New("for actions of type 'fixed-response', you must specify a 'fixed_response' block")
 				}
 
-			case elbv2.ActionTypeEnumAuthenticateCognito:
+			case "authenticate-cognito":
 				authenticateCognitoList := actionMap["authenticate_cognito"].([]interface{})
 
 				if len(authenticateCognitoList) == 1 {
@@ -997,7 +1039,7 @@ func resourceAwsLbListenerRuleUpdate(d *schema.ResourceData, meta interface{}) e
 					return errors.New("for actions of type 'authenticate-cognito', you must specify a 'authenticate_cognito' block")
 				}
 
-			case elbv2.ActionTypeEnumAuthenticateOidc:
+			case "authenticate-oidc":
 				authenticateOidcList := actionMap["authenticate_oidc"].([]interface{})
 
 				if len(authenticateOidcList) == 1 {
@@ -1038,6 +1080,7 @@ func resourceAwsLbListenerRuleUpdate(d *schema.ResourceData, meta interface{}) e
 			params.Actions[i] = action
 		}
 		requestUpdate = true
+		d.SetPartial("action")
 	}
 
 	if d.HasChange("condition") {
@@ -1047,18 +1090,21 @@ func resourceAwsLbListenerRuleUpdate(d *schema.ResourceData, meta interface{}) e
 			return err
 		}
 		requestUpdate = true
+		d.SetPartial("condition")
 	}
 
 	if requestUpdate {
 		resp, err := elbconn.ModifyRule(params)
 		if err != nil {
-			return fmt.Errorf("Error modifying LB Listener Rule: %w", err)
+			return fmt.Errorf("Error modifying LB Listener Rule: %s", err)
 		}
 
 		if len(resp.Rules) == 0 {
 			return errors.New("Error modifying creating LB Listener Rule: no rules returned in response")
 		}
 	}
+
+	d.Partial(false)
 
 	return resourceAwsLbListenerRuleRead(d, meta)
 }
@@ -1070,7 +1116,7 @@ func resourceAwsLbListenerRuleDelete(d *schema.ResourceData, meta interface{}) e
 		RuleArn: aws.String(d.Id()),
 	})
 	if err != nil && !isAWSErr(err, elbv2.ErrCodeRuleNotFoundException, "") {
-		return fmt.Errorf("Error deleting LB Listener Rule: %w", err)
+		return fmt.Errorf("Error deleting LB Listener Rule: %s", err)
 	}
 	return nil
 }
@@ -1109,7 +1155,8 @@ func highestListenerRulePriority(conn *elbv2.ELBV2, arn string) (priority int64,
 			Marker:      nextMarker,
 		})
 		if aerr != nil {
-			return 0, aerr
+			err = aerr
+			return
 		}
 		for _, rule := range out.Rules {
 			if aws.StringValue(rule.Priority) != "default" {
@@ -1124,12 +1171,14 @@ func highestListenerRulePriority(conn *elbv2.ELBV2, arn string) (priority int64,
 	}
 
 	if len(priorities) == 0 {
-		return 0, nil
+		priority = 0
+		return
 	}
 
 	sort.IntSlice(priorities).Sort()
+	priority = int64(priorities[len(priorities)-1])
 
-	return int64(priorities[len(priorities)-1]), nil
+	return
 }
 
 // lbListenerRuleConditions converts data source generated by Terraform into
@@ -1214,53 +1263,44 @@ func lbListenerRuleConditions(conditions []interface{}) ([]*elbv2.RuleCondition,
 			}
 		}
 
+		// Deprecated backwards compatibility
+		// This code is also hit during an update when the condition has not been modified. Issues: GH-11232 and GH-11362
+		if cmField, ok := conditionMap["field"].(string); ok && (cmField == "host-header" || cmField == "path-pattern") {
+			// When the condition is not being updated Terraform feeds in the existing state which has host header and
+			// path pattern set in both locations with identical values.
+			if field == cmField {
+				values := schema.NewSet(schema.HashString, conditionMap["values"].([]interface{}))
+				var values2 *schema.Set
+				if cmField == "host-header" {
+					values2 = conditionMap["host_header"].([]interface{})[0].(map[string]interface{})["values"].(*schema.Set)
+				} else {
+					values2 = conditionMap["path_pattern"].([]interface{})[0].(map[string]interface{})["values"].(*schema.Set)
+				}
+				if !values2.Equal(values) {
+					attrs += 1
+				}
+			} else {
+				field = cmField
+				attrs += 1
+				values := conditionMap["values"].([]interface{})
+				if len(values) == 0 {
+					return nil, errors.New("Both field and values must be set in a condition block")
+				}
+				elbConditions[i].Values = expandStringList(values)
+			}
+		}
+
 		// FIXME Rework this and use ConflictsWith when it finally works with collections:
 		// https://github.com/hashicorp/terraform/issues/13016
 		// Still need to ensure that one of the condition attributes is set.
 		if attrs == 0 {
 			return nil, errors.New("One of host_header, http_header, http_request_method, path_pattern, query_string or source_ip must be set in a condition block")
 		} else if attrs > 1 {
-			return nil, errors.New("Only one of host_header, http_header, http_request_method, path_pattern, query_string or source_ip can be set in a condition block")
+			// Deprecated: remove `field` from message
+			return nil, errors.New("Only one of field, host_header, http_header, http_request_method, path_pattern, query_string or source_ip can be set in a condition block")
 		}
 
 		elbConditions[i].Field = aws.String(field)
 	}
 	return elbConditions, nil
-}
-
-func lbListenerRuleActionForward(actionMap map[string]interface{}, action *elbv2.Action) error {
-	forwardList := actionMap["forward"].([]interface{})
-	targetGroupArn := actionMap["target_group_arn"].(string)
-
-	if targetGroupArn != "" {
-		action.TargetGroupArn = aws.String(targetGroupArn)
-	} else if len(forwardList) == 1 {
-		forwardMap := forwardList[0].(map[string]interface{})
-		targetGroupsInput := forwardMap["target_group"].(*schema.Set).List()
-		weightedTargetGroups := make([]*elbv2.TargetGroupTuple, len(targetGroupsInput))
-
-		for i, input := range targetGroupsInput {
-			weightedTargetGroup := input.(map[string]interface{})
-			weightedTargetGroups[i] = &elbv2.TargetGroupTuple{
-				TargetGroupArn: aws.String(weightedTargetGroup["arn"].(string)),
-				Weight:         aws.Int64(int64(weightedTargetGroup["weight"].(int))),
-			}
-		}
-
-		action.ForwardConfig = &elbv2.ForwardActionConfig{
-			TargetGroups: weightedTargetGroups,
-		}
-
-		stickinessInput := forwardMap["stickiness"].([]interface{})
-		if len(stickinessInput) != 0 {
-			stickyInputMap := stickinessInput[0].(map[string]interface{})
-			action.ForwardConfig.TargetGroupStickinessConfig = &elbv2.TargetGroupStickinessConfig{
-				Enabled:         aws.Bool(stickyInputMap["enabled"].(bool)),
-				DurationSeconds: aws.Int64(int64(stickyInputMap["duration"].(int))),
-			}
-		}
-	} else {
-		return errors.New("for actions of type 'forward', you must specify a 'forward' block or 'target_group_arn'")
-	}
-	return nil
 }

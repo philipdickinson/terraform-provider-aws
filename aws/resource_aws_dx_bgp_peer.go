@@ -7,9 +7,9 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/directconnect"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
 func resourceAwsDxBgpPeer() *schema.Resource {
@@ -88,13 +88,13 @@ func resourceAwsDxBgpPeerCreate(d *schema.ResourceData, meta interface{}) error 
 			Asn:           aws.Int64(asn),
 		},
 	}
-	if v, ok := d.GetOk("amazon_address"); ok {
+	if v, ok := d.GetOk("amazon_address"); ok && v.(string) != "" {
 		req.NewBGPPeer.AmazonAddress = aws.String(v.(string))
 	}
-	if v, ok := d.GetOk("bgp_auth_key"); ok {
+	if v, ok := d.GetOk("bgp_auth_key"); ok && v.(string) != "" {
 		req.NewBGPPeer.AuthKey = aws.String(v.(string))
 	}
-	if v, ok := d.GetOk("customer_address"); ok {
+	if v, ok := d.GetOk("customer_address"); ok && v.(string) != "" {
 		req.NewBGPPeer.CustomerAddress = aws.String(v.(string))
 	}
 

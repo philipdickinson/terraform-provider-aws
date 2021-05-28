@@ -2,13 +2,14 @@ package aws
 
 import (
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/aws/aws-sdk-go/aws/arn"
+	"github.com/aws/aws-sdk-go/service/elasticache"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/terraform-providers/terraform-provider-aws/aws/internal/keyvaluetags"
-	"github.com/terraform-providers/terraform-provider-aws/aws/internal/service/elasticache/finder"
-	"github.com/terraform-providers/terraform-provider-aws/aws/internal/tfresource"
 )
 
 func dataSourceAwsElastiCacheCluster() *schema.Resource {
@@ -19,6 +20,7 @@ func dataSourceAwsElastiCacheCluster() *schema.Resource {
 			"cluster_id": {
 				Type:     schema.TypeString,
 				Required: true,
+				ForceNew: true,
 				StateFunc: func(v interface{}) string {
 					value := v.(string)
 					return strings.ToLower(value)
@@ -151,18 +153,28 @@ func dataSourceAwsElastiCacheCluster() *schema.Resource {
 
 func dataSourceAwsElastiCacheClusterRead(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).elasticacheconn
-	ignoreTagsConfig := meta.(*AWSClient).IgnoreTagsConfig
 
-	clusterID := d.Get("cluster_id").(string)
-	cluster, err := finder.CacheClusterWithNodeInfoByID(conn, clusterID)
-	if tfresource.NotFound(err) {
-		return fmt.Errorf("Your query returned no results. Please change your search criteria and try again")
+	req := &elasticache.DescribeCacheClustersInput{
+		CacheClusterId:    aws.String(d.Get("cluster_id").(string)),
+		ShowCacheNodeInfo: aws.Bool(true),
 	}
+
+	log.Printf("[DEBUG] Reading ElastiCache Cluster: %s", req)
+	resp, err := conn.DescribeCacheClusters(req)
 	if err != nil {
-		return fmt.Errorf("error reading ElastiCache Cache Cluster (%s): %w", clusterID, err)
+		return err
 	}
 
-	d.SetId(aws.StringValue(cluster.CacheClusterId))
+	if len(resp.CacheClusters) < 1 {
+		return fmt.Errorf("Your query returned no results. Please change your search criteria and try again.")
+	}
+	if len(resp.CacheClusters) > 1 {
+		return fmt.Errorf("Your query returned more than one result. Please try a more specific search criteria.")
+	}
+
+	cluster := resp.CacheClusters[0]
+
+	d.SetId(*cluster.CacheClusterId)
 
 	d.Set("cluster_id", cluster.CacheClusterId)
 	d.Set("node_type", cluster.CacheNodeType)
@@ -202,16 +214,23 @@ func dataSourceAwsElastiCacheClusterRead(d *schema.ResourceData, meta interface{
 		return err
 	}
 
-	d.Set("arn", cluster.ARN)
+	arn := arn.ARN{
+		Partition: meta.(*AWSClient).partition,
+		Service:   "elasticache",
+		Region:    meta.(*AWSClient).region,
+		AccountID: meta.(*AWSClient).accountid,
+		Resource:  fmt.Sprintf("cluster:%s", d.Id()),
+	}.String()
+	d.Set("arn", arn)
 
-	tags, err := keyvaluetags.ElasticacheListTags(conn, aws.StringValue(cluster.ARN))
+	tags, err := keyvaluetags.ElasticacheListTags(conn, arn)
 
 	if err != nil {
-		return fmt.Errorf("error listing tags for Elasticache Cluster (%s): %w", d.Id(), err)
+		return fmt.Errorf("error listing tags for Elasticache Cluster (%s): %s", arn, err)
 	}
 
-	if err := d.Set("tags", tags.IgnoreAws().IgnoreConfig(ignoreTagsConfig).Map()); err != nil {
-		return fmt.Errorf("error setting tags: %w", err)
+	if err := d.Set("tags", tags.IgnoreAws().Map()); err != nil {
+		return fmt.Errorf("error setting tags: %s", err)
 	}
 
 	return nil

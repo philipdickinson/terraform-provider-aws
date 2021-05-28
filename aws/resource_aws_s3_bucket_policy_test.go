@@ -6,9 +6,9 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 	awspolicy "github.com/jen20/awspolicyequivalence"
 )
 
@@ -17,22 +17,16 @@ func TestAccAWSS3BucketPolicy_basic(t *testing.T) {
 	partition := testAccGetPartition()
 
 	expectedPolicyText := fmt.Sprintf(`{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "",
-      "Effect": "Allow",
-      "Principal": {
-        "AWS": "*"
-      },
-      "Action": "s3:*",
-      "Resource": [
-        "arn:%s:s3:::%s/*",
-        "arn:%s:s3:::%s"
-      ]
-    }
-  ]
-}`, partition, name, partition, name)
+	"Version": "2012-10-17",
+	"Statement": [{
+		"Sid": "",
+		"Effect": "Allow",
+		"Principal": {"AWS":"*"},
+		"Action": "s3:*",
+		"Resource": ["arn:%s:s3:::%s/*","arn:%s:s3:::%s"]
+	}]
+}
+`, partition, name, partition, name)
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
@@ -60,44 +54,28 @@ func TestAccAWSS3BucketPolicy_policyUpdate(t *testing.T) {
 	partition := testAccGetPartition()
 
 	expectedPolicyText1 := fmt.Sprintf(`{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "",
-      "Effect": "Allow",
-      "Principal": {
-        "AWS": "*"
-      },
-      "Action": "s3:*",
-      "Resource": [
-        "arn:%[1]s:s3:::%[2]s/*",
-        "arn:%[1]s:s3:::%[2]s"
-      ]
-    }
-  ]
-}`, partition, name)
+	"Version": "2012-10-17",
+	"Statement": [{
+		"Sid": "",
+		"Effect": "Allow",
+		"Principal": {"AWS":"*"},
+		"Action": "s3:*",
+		"Resource": ["arn:%s:s3:::%s/*","arn:%s:s3:::%s"]
+	}]
+}
+`, partition, name, partition, name)
 
 	expectedPolicyText2 := fmt.Sprintf(`{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "",
-      "Effect": "Allow",
-      "Principal": {
-        "AWS": "*"
-      },
-      "Action": [
-        "s3:DeleteBucket",
-        "s3:ListBucket",
-        "s3:ListBucketVersions"
-      ],
-      "Resource": [
-        "arn:%[1]s:s3:::%[2]s/*",
-        "arn:%[1]s:s3:::%[2]s"
-      ]
-    }
-  ]
-}`, partition, name)
+	"Version":"2012-10-17",
+	"Statement":[{
+		"Sid": "",
+		"Effect": "Allow",
+		"Principal": {"AWS":"*"},
+		"Action": ["s3:DeleteBucket", "s3:ListBucket", "s3:ListBucketVersions"],
+		"Resource": ["arn:%s:s3:::%s/*","arn:%s:s3:::%s"]
+	}]
+}
+`, partition, name, partition, name)
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
@@ -175,8 +153,8 @@ resource "aws_s3_bucket" "bucket" {
 }
 
 resource "aws_s3_bucket_policy" "bucket" {
-  bucket = aws_s3_bucket.bucket.bucket
-  policy = data.aws_iam_policy_document.policy.json
+  bucket = "${aws_s3_bucket.bucket.bucket}"
+  policy = "${data.aws_iam_policy_document.policy.json}"
 }
 
 data "aws_iam_policy_document" "policy" {
@@ -188,7 +166,7 @@ data "aws_iam_policy_document" "policy" {
     ]
 
     resources = [
-      aws_s3_bucket.bucket.arn,
+      "${aws_s3_bucket.bucket.arn}",
       "${aws_s3_bucket.bucket.arn}/*",
     ]
 
@@ -212,8 +190,8 @@ resource "aws_s3_bucket" "bucket" {
 }
 
 resource "aws_s3_bucket_policy" "bucket" {
-  bucket = aws_s3_bucket.bucket.bucket
-  policy = data.aws_iam_policy_document.policy.json
+  bucket = "${aws_s3_bucket.bucket.bucket}"
+  policy = "${data.aws_iam_policy_document.policy.json}"
 }
 
 data "aws_iam_policy_document" "policy" {
@@ -227,7 +205,7 @@ data "aws_iam_policy_document" "policy" {
     ]
 
     resources = [
-      aws_s3_bucket.bucket.arn,
+      "${aws_s3_bucket.bucket.arn}",
       "${aws_s3_bucket.bucket.arn}/*",
     ]
 

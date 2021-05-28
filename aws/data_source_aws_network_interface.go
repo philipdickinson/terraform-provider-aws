@@ -6,7 +6,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/terraform-providers/terraform-provider-aws/aws/internal/keyvaluetags"
 )
 
@@ -30,14 +30,6 @@ func dataSourceAwsNetworkInterface() *schema.Resource {
 							Computed: true,
 						},
 						"association_id": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"carrier_ip": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"customer_owned_ip": {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
@@ -131,10 +123,6 @@ func dataSourceAwsNetworkInterface() *schema.Resource {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
-			"outpost_arn": {
-				Type:     schema.TypeString,
-				Computed: true,
-			},
 			"vpc_id": {
 				Type:     schema.TypeString,
 				Computed: true,
@@ -146,7 +134,6 @@ func dataSourceAwsNetworkInterface() *schema.Resource {
 
 func dataSourceAwsNetworkInterfaceRead(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).ec2conn
-	ignoreTagsConfig := meta.(*AWSClient).IgnoreTagsConfig
 
 	input := &ec2.DescribeNetworkInterfacesInput{}
 	if v, ok := d.GetOk("id"); ok {
@@ -173,7 +160,7 @@ func dataSourceAwsNetworkInterfaceRead(d *schema.ResourceData, meta interface{})
 
 	eni := resp.NetworkInterfaces[0]
 
-	d.SetId(aws.StringValue(eni.NetworkInterfaceId))
+	d.SetId(*eni.NetworkInterfaceId)
 	if eni.Association != nil {
 		d.Set("association", flattenEc2NetworkInterfaceAssociation(eni.Association))
 	}
@@ -193,10 +180,9 @@ func dataSourceAwsNetworkInterfaceRead(d *schema.ResourceData, meta interface{})
 	d.Set("private_ips", flattenNetworkInterfacesPrivateIPAddresses(eni.PrivateIpAddresses))
 	d.Set("requester_id", eni.RequesterId)
 	d.Set("subnet_id", eni.SubnetId)
-	d.Set("outpost_arn", eni.OutpostArn)
 	d.Set("vpc_id", eni.VpcId)
 
-	if err := d.Set("tags", keyvaluetags.Ec2KeyValueTags(eni.TagSet).IgnoreAws().IgnoreConfig(ignoreTagsConfig).Map()); err != nil {
+	if err := d.Set("tags", keyvaluetags.Ec2KeyValueTags(eni.TagSet).IgnoreAws().Map()); err != nil {
 		return fmt.Errorf("error setting tags: %s", err)
 	}
 

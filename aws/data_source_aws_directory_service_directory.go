@@ -2,12 +2,12 @@ package aws
 
 import (
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/terraform-providers/terraform-provider-aws/aws/internal/keyvaluetags"
 	"log"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/directoryservice"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/terraform-providers/terraform-provider-aws/aws/internal/keyvaluetags"
 )
 
 func dataSourceAwsDirectoryServiceDirectory() *schema.Resource {
@@ -49,15 +49,11 @@ func dataSourceAwsDirectoryServiceDirectory() *schema.Resource {
 							Type:     schema.TypeSet,
 							Computed: true,
 							Elem:     &schema.Schema{Type: schema.TypeString},
+							Set:      schema.HashString,
 						},
 						"vpc_id": {
 							Type:     schema.TypeString,
 							Computed: true,
-						},
-						"availability_zones": {
-							Type:     schema.TypeSet,
-							Computed: true,
-							Elem:     &schema.Schema{Type: schema.TypeString},
 						},
 					},
 				},
@@ -67,11 +63,6 @@ func dataSourceAwsDirectoryServiceDirectory() *schema.Resource {
 				Computed: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"connect_ips": {
-							Type:     schema.TypeSet,
-							Computed: true,
-							Elem:     &schema.Schema{Type: schema.TypeString},
-						},
 						"customer_username": {
 							Type:     schema.TypeString,
 							Computed: true,
@@ -80,20 +71,17 @@ func dataSourceAwsDirectoryServiceDirectory() *schema.Resource {
 							Type:     schema.TypeSet,
 							Computed: true,
 							Elem:     &schema.Schema{Type: schema.TypeString},
+							Set:      schema.HashString,
 						},
 						"subnet_ids": {
 							Type:     schema.TypeSet,
 							Computed: true,
 							Elem:     &schema.Schema{Type: schema.TypeString},
+							Set:      schema.HashString,
 						},
 						"vpc_id": {
 							Type:     schema.TypeString,
 							Computed: true,
-						},
-						"availability_zones": {
-							Type:     schema.TypeSet,
-							Computed: true,
-							Elem:     &schema.Schema{Type: schema.TypeString},
 						},
 					},
 				},
@@ -109,6 +97,7 @@ func dataSourceAwsDirectoryServiceDirectory() *schema.Resource {
 			"dns_ip_addresses": {
 				Type:     schema.TypeSet,
 				Elem:     &schema.Schema{Type: schema.TypeString},
+				Set:      schema.HashString,
 				Computed: true,
 			},
 			"security_group_id": {
@@ -129,21 +118,19 @@ func dataSourceAwsDirectoryServiceDirectory() *schema.Resource {
 
 func dataSourceAwsDirectoryServiceDirectoryRead(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).dsconn
-	ignoreTagsConfig := meta.(*AWSClient).IgnoreTagsConfig
 
 	directoryID := d.Get("directory_id").(string)
 	out, err := conn.DescribeDirectories(&directoryservice.DescribeDirectoriesInput{
 		DirectoryIds: []*string{aws.String(directoryID)},
 	})
 	if err != nil {
-		if isAWSErr(err, directoryservice.ErrCodeEntityDoesNotExistException, "") {
-			return fmt.Errorf("DirectoryService Directory (%s) not found", directoryID)
-		}
-		return fmt.Errorf("error reading DirectoryService Directory: %w", err)
+		return err
 	}
 
-	if out == nil || len(out.DirectoryDescriptions) == 0 {
-		return fmt.Errorf("error reading DirectoryService Directory (%s): empty output", directoryID)
+	if len(out.DirectoryDescriptions) == 0 {
+		log.Printf("[WARN] Directory %s not found", d.Id())
+		d.SetId("")
+		return nil
 	}
 
 	d.SetId(directoryID)
@@ -155,47 +142,33 @@ func dataSourceAwsDirectoryServiceDirectoryRead(d *schema.ResourceData, meta int
 	d.Set("alias", dir.Alias)
 	d.Set("description", dir.Description)
 
-	var addresses []interface{}
-	if aws.StringValue(dir.Type) == directoryservice.DirectoryTypeAdconnector {
-		addresses = flattenStringList(dir.ConnectSettings.ConnectIps)
+	if *dir.Type == directoryservice.DirectoryTypeAdconnector {
+		d.Set("dns_ip_addresses", schema.NewSet(schema.HashString, flattenStringList(dir.ConnectSettings.ConnectIps)))
 	} else {
-		addresses = flattenStringList(dir.DnsIpAddrs)
+		d.Set("dns_ip_addresses", schema.NewSet(schema.HashString, flattenStringList(dir.DnsIpAddrs)))
 	}
-	if err := d.Set("dns_ip_addresses", addresses); err != nil {
-		return fmt.Errorf("error setting dns_ip_addresses: %w", err)
-	}
-
 	d.Set("name", dir.Name)
 	d.Set("short_name", dir.ShortName)
 	d.Set("size", dir.Size)
 	d.Set("edition", dir.Edition)
 	d.Set("type", dir.Type)
-
-	if err := d.Set("vpc_settings", flattenDSVpcSettings(dir.VpcSettings)); err != nil {
-		return fmt.Errorf("error setting VPC settings: %w", err)
-	}
-
-	if err := d.Set("connect_settings", flattenDSConnectSettings(dir.DnsIpAddrs, dir.ConnectSettings)); err != nil {
-		return fmt.Errorf("error setting connect settings: %w", err)
-	}
-
+	d.Set("vpc_settings", flattenDSVpcSettings(dir.VpcSettings))
+	d.Set("connect_settings", flattenDSConnectSettings(dir.DnsIpAddrs, dir.ConnectSettings))
 	d.Set("enable_sso", dir.SsoEnabled)
 
-	var securityGroupId *string
 	if aws.StringValue(dir.Type) == directoryservice.DirectoryTypeAdconnector {
-		securityGroupId = dir.ConnectSettings.SecurityGroupId
+		d.Set("security_group_id", aws.StringValue(dir.ConnectSettings.SecurityGroupId))
 	} else {
-		securityGroupId = dir.VpcSettings.SecurityGroupId
+		d.Set("security_group_id", aws.StringValue(dir.VpcSettings.SecurityGroupId))
 	}
-	d.Set("security_group_id", aws.StringValue(securityGroupId))
 
 	tags, err := keyvaluetags.DirectoryserviceListTags(conn, d.Id())
 	if err != nil {
-		return fmt.Errorf("error listing tags for Directory Service Directory (%s): %w", d.Id(), err)
+		return fmt.Errorf("error listing tags for Directory Service Directory (%s): %s", d.Id(), err)
 	}
 
-	if err := d.Set("tags", tags.IgnoreAws().IgnoreConfig(ignoreTagsConfig).Map()); err != nil {
-		return fmt.Errorf("error setting tags: %w", err)
+	if err := d.Set("tags", tags.IgnoreAws().Map()); err != nil {
+		return fmt.Errorf("error setting tags: %s", err)
 	}
 
 	return nil

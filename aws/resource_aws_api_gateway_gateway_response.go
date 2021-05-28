@@ -6,8 +6,9 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/apigateway"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 func resourceAwsApiGatewayGatewayResponse() *schema.Resource {
@@ -114,7 +115,7 @@ func resourceAwsApiGatewayGatewayResponseRead(d *schema.ResourceData, meta inter
 		ResponseType: aws.String(d.Get("response_type").(string)),
 	})
 	if err != nil {
-		if isAWSErr(err, apigateway.ErrCodeNotFoundException, "") {
+		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "NotFoundException" {
 			log.Printf("[WARN] API Gateway Gateway Response (%s) not found, removing from state", d.Id())
 			d.SetId("")
 			return nil
@@ -141,7 +142,7 @@ func resourceAwsApiGatewayGatewayResponseDelete(d *schema.ResourceData, meta int
 		ResponseType: aws.String(d.Get("response_type").(string)),
 	})
 
-	if isAWSErr(err, apigateway.ErrCodeNotFoundException, "") {
+	if isAWSErr(err, "NotFoundException", "") {
 		return nil
 	}
 

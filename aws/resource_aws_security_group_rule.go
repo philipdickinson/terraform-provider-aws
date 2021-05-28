@@ -12,14 +12,13 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
-	"github.com/terraform-providers/terraform-provider-aws/aws/internal/hashcode"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/hashcode"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
 func resourceAwsSecurityGroupRule() *schema.Resource {
-	//lintignore:R011
 	return &schema.Resource{
 		Create: resourceAwsSecurityGroupRuleCreate,
 		Read:   resourceAwsSecurityGroupRuleRead,
@@ -327,8 +326,9 @@ func resourceAwsSecurityGroupRuleRead(d *schema.ResourceData, meta interface{}) 
 	log.Printf("[DEBUG] Found rule for Security Group Rule (%s): %s", d.Id(), rule)
 
 	d.Set("type", ruleType)
-
-	setFromIPPerm(d, sg, p)
+	if err := setFromIPPerm(d, sg, p); err != nil {
+		return fmt.Errorf("Error setting IP Permission for Security Group Rule: %s", err)
+	}
 
 	d.Set("description", descriptionFromIPPerm(d, rule))
 
@@ -455,7 +455,6 @@ func (b ByGroupPair) Less(i, j int) bool {
 		return *b[i].GroupName < *b[j].GroupName
 	}
 
-	//lintignore:R009
 	panic("mismatched security group rules, may be a terraform bug")
 }
 
@@ -639,7 +638,7 @@ func expandIPPerm(d *schema.ResourceData, sg *ec2.SecurityGroup) (*ec2.IpPermiss
 		groups[raw.(string)] = true
 	}
 
-	if _, ok := d.GetOk("self"); ok {
+	if v, ok := d.GetOk("self"); ok && v.(bool) {
 		if sg.VpcId != nil && *sg.VpcId != "" {
 			groups[*sg.GroupId] = true
 		} else {
@@ -731,8 +730,8 @@ func expandIPPerm(d *schema.ResourceData, sg *ec2.SecurityGroup) (*ec2.IpPermiss
 	return &perm, nil
 }
 
-func setFromIPPerm(d *schema.ResourceData, sg *ec2.SecurityGroup, rule *ec2.IpPermission) {
-	isVPC := aws.StringValue(sg.VpcId) != ""
+func setFromIPPerm(d *schema.ResourceData, sg *ec2.SecurityGroup, rule *ec2.IpPermission) error {
+	isVPC := sg.VpcId != nil && *sg.VpcId != ""
 
 	d.Set("from_port", rule.FromPort)
 	d.Set("to_port", rule.ToPort)
@@ -760,23 +759,13 @@ func setFromIPPerm(d *schema.ResourceData, sg *ec2.SecurityGroup, rule *ec2.IpPe
 		s := rule.UserIdGroupPairs[0]
 
 		if isVPC {
-			if existingSourceSgId, ok := d.GetOk("source_security_group_id"); ok {
-				sgIdComponents := strings.Split(existingSourceSgId.(string), "/")
-				hasAccountIdPrefix := len(sgIdComponents) == 2
-
-				if hasAccountIdPrefix && s.UserId != nil {
-					// then ensure on refresh that we preserve the account id prefix
-					d.Set("source_security_group_id", fmt.Sprintf("%s/%s", aws.StringValue(s.UserId), aws.StringValue(s.GroupId)))
-				} else {
-					d.Set("source_security_group_id", s.GroupId)
-				}
-			} else {
-				d.Set("source_security_group_id", s.GroupId)
-			}
+			d.Set("source_security_group_id", s.GroupId)
 		} else {
 			d.Set("source_security_group_id", s.GroupName)
 		}
 	}
+
+	return nil
 }
 
 func descriptionFromIPPerm(d *schema.ResourceData, rule *ec2.IpPermission) string {
@@ -841,33 +830,19 @@ func descriptionFromIPPerm(d *schema.ResourceData, rule *ec2.IpPermission) strin
 	}
 
 	// probe UserIdGroupPairs
+	groupIds := make(map[string]bool)
 	if raw, ok := d.GetOk("source_security_group_id"); ok {
-		components := strings.Split(raw.(string), "/")
+		groupIds[raw.(string)] = true
+	}
 
-		switch len(components) {
-		case 2:
-			userId := components[0]
-			groupId := components[1]
-
-			for _, gp := range rule.UserIdGroupPairs {
-				if aws.StringValue(gp.GroupId) != groupId || aws.StringValue(gp.UserId) != userId {
-					continue
-				}
-
-				if desc := aws.StringValue(gp.Description); desc != "" {
-					return desc
-				}
+	if len(groupIds) > 0 {
+		for _, gp := range rule.UserIdGroupPairs {
+			if _, ok := groupIds[*gp.GroupId]; !ok {
+				continue
 			}
-		case 1:
-			groupId := components[0]
-			for _, gp := range rule.UserIdGroupPairs {
-				if aws.StringValue(gp.GroupId) != groupId {
-					continue
-				}
 
-				if desc := aws.StringValue(gp.Description); desc != "" {
-					return desc
-				}
+			if desc := aws.StringValue(gp.Description); desc != "" {
+				return desc
 			}
 		}
 	}
@@ -1002,14 +977,8 @@ func populateSecurityGroupRuleFromImport(d *schema.ResourceData, importParts []s
 	sgID := importParts[0]
 	ruleType := importParts[1]
 	protocol := importParts[2]
-	fromPort, err := strconv.Atoi(importParts[3])
-	if err != nil {
-		return err
-	}
-	toPort, err := strconv.Atoi(importParts[4])
-	if err != nil {
-		return err
-	}
+	fromPort, _ := strconv.Atoi(importParts[3])
+	toPort, _ := strconv.Atoi(importParts[4])
 	sources := importParts[5:]
 
 	d.Set("security_group_id", sgID)

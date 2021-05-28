@@ -6,9 +6,9 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/lambda"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccAWSLambdaFunctionEventInvokeConfig_basic(t *testing.T) {
@@ -261,33 +261,6 @@ func TestAccAWSLambdaFunctionEventInvokeConfig_FunctionName_Arn(t *testing.T) {
 	})
 }
 
-func TestAccAWSLambdaFunctionEventInvokeConfig_Qualifier_FunctionName_Arn(t *testing.T) {
-	rName := acctest.RandomWithPrefix("tf-acc-test")
-	lambdaFunctionResourceName := "aws_lambda_function.test"
-	resourceName := "aws_lambda_function_event_invoke_config.test"
-
-	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t) },
-		Providers:    testAccProviders,
-		CheckDestroy: testAccCheckLambdaFunctionEventInvokeConfigDestroy,
-		Steps: []resource.TestStep{
-			{
-				Config: testAccAWSLambdaFunctionEventInvokeConfigQualifierFunctionNameArn(rName),
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckAwsLambdaFunctionEventInvokeConfigExists(resourceName),
-					resource.TestCheckResourceAttrPair(resourceName, "function_name", lambdaFunctionResourceName, "arn"),
-					resource.TestCheckResourceAttr(resourceName, "qualifier", LambdaFunctionVersionLatest),
-				),
-			},
-			{
-				ResourceName:      resourceName,
-				ImportState:       true,
-				ImportStateVerify: true,
-			},
-		},
-	})
-}
-
 func TestAccAWSLambdaFunctionEventInvokeConfig_MaximumEventAgeInSeconds(t *testing.T) {
 	rName := acctest.RandomWithPrefix("tf-acc-test")
 	resourceName := "aws_lambda_function_event_invoke_config.test"
@@ -425,7 +398,7 @@ func TestAccAWSLambdaFunctionEventInvokeConfig_Qualifier_Latest(t *testing.T) {
 				Config: testAccAWSLambdaFunctionEventInvokeConfigQualifierLatest(rName),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckAwsLambdaFunctionEventInvokeConfigExists(resourceName),
-					resource.TestCheckResourceAttr(resourceName, "qualifier", LambdaFunctionVersionLatest),
+					resource.TestCheckResourceAttr(resourceName, "qualifier", "$LATEST"),
 				),
 			},
 			{
@@ -693,28 +666,19 @@ resource "aws_lambda_function_event_invoke_config" "test" {
 }
 
 func testAccAWSLambdaFunctionEventInvokeConfigFunctionName(rName string) string {
-	return testAccAWSLambdaFunctionEventInvokeConfigBase(rName) + `
+	return testAccAWSLambdaFunctionEventInvokeConfigBase(rName) + fmt.Sprintf(`
 resource "aws_lambda_function_event_invoke_config" "test" {
   function_name = aws_lambda_function.test.function_name
 }
-`
+`)
 }
 
 func testAccAWSLambdaFunctionEventInvokeConfigFunctionNameArn(rName string) string {
-	return testAccAWSLambdaFunctionEventInvokeConfigBase(rName) + `
+	return testAccAWSLambdaFunctionEventInvokeConfigBase(rName) + fmt.Sprintf(`
 resource "aws_lambda_function_event_invoke_config" "test" {
   function_name = aws_lambda_function.test.arn
 }
-`
-}
-
-func testAccAWSLambdaFunctionEventInvokeConfigQualifierFunctionNameArn(rName string) string {
-	return testAccAWSLambdaFunctionEventInvokeConfigBase(rName) + `
-resource "aws_lambda_function_event_invoke_config" "test" {
-  function_name = aws_lambda_function.test.arn
-  qualifier     = "$LATEST"
-}
-`
+`)
 }
 
 func testAccAWSLambdaFunctionEventInvokeConfigMaximumEventAgeInSeconds(rName string, maximumEventAgeInSeconds int) string {
@@ -736,7 +700,7 @@ resource "aws_lambda_function_event_invoke_config" "test" {
 }
 
 func testAccAWSLambdaFunctionEventInvokeConfigQualifierAliasName(rName string) string {
-	return testAccAWSLambdaFunctionEventInvokeConfigBase(rName) + `
+	return testAccAWSLambdaFunctionEventInvokeConfigBase(rName) + fmt.Sprintf(`
 resource "aws_lambda_alias" "test" {
   function_name    = aws_lambda_function.test.function_name
   function_version = aws_lambda_function.test.version
@@ -747,23 +711,23 @@ resource "aws_lambda_function_event_invoke_config" "test" {
   function_name = aws_lambda_alias.test.function_name
   qualifier     = aws_lambda_alias.test.name
 }
-`
+`)
 }
 
 func testAccAWSLambdaFunctionEventInvokeConfigQualifierFunctionVersion(rName string) string {
-	return testAccAWSLambdaFunctionEventInvokeConfigBase(rName) + `
+	return testAccAWSLambdaFunctionEventInvokeConfigBase(rName) + fmt.Sprintf(`
 resource "aws_lambda_function_event_invoke_config" "test" {
   function_name = aws_lambda_function.test.function_name
   qualifier     = aws_lambda_function.test.version
 }
-`
+`)
 }
 
 func testAccAWSLambdaFunctionEventInvokeConfigQualifierLatest(rName string) string {
-	return testAccAWSLambdaFunctionEventInvokeConfigBase(rName) + `
+	return testAccAWSLambdaFunctionEventInvokeConfigBase(rName) + fmt.Sprintf(`
 resource "aws_lambda_function_event_invoke_config" "test" {
   function_name = aws_lambda_function.test.function_name
   qualifier     = "$LATEST"
 }
-`
+`)
 }

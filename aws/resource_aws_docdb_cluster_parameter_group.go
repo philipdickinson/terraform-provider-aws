@@ -7,9 +7,9 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/docdb"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 	"github.com/terraform-providers/terraform-provider-aws/aws/internal/keyvaluetags"
 )
 
@@ -126,7 +126,6 @@ func resourceAwsDocDBClusterParameterGroupCreate(d *schema.ResourceData, meta in
 
 func resourceAwsDocDBClusterParameterGroupRead(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).docdbconn
-	ignoreTagsConfig := meta.(*AWSClient).IgnoreTagsConfig
 
 	describeOpts := &docdb.DescribeDBClusterParameterGroupsInput{
 		DBClusterParameterGroupName: aws.String(d.Id()),
@@ -143,7 +142,7 @@ func resourceAwsDocDBClusterParameterGroupRead(d *schema.ResourceData, meta inte
 	}
 
 	if len(describeResp.DBClusterParameterGroups) != 1 ||
-		aws.StringValue(describeResp.DBClusterParameterGroups[0].DBClusterParameterGroupName) != d.Id() {
+		*describeResp.DBClusterParameterGroups[0].DBClusterParameterGroupName != d.Id() {
 		return fmt.Errorf("Unable to find Cluster Parameter Group: %#v", describeResp.DBClusterParameterGroups)
 	}
 
@@ -173,7 +172,7 @@ func resourceAwsDocDBClusterParameterGroupRead(d *schema.ResourceData, meta inte
 		return fmt.Errorf("error listing tags for DocumentDB Cluster Parameter Group (%s): %s", d.Get("arn").(string), err)
 	}
 
-	if err := d.Set("tags", tags.IgnoreAws().IgnoreConfig(ignoreTagsConfig).Map()); err != nil {
+	if err := d.Set("tags", tags.IgnoreAws().Map()); err != nil {
 		return fmt.Errorf("error setting tags: %s", err)
 	}
 
@@ -182,6 +181,8 @@ func resourceAwsDocDBClusterParameterGroupRead(d *schema.ResourceData, meta inte
 
 func resourceAwsDocDBClusterParameterGroupUpdate(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).docdbconn
+
+	d.Partial(true)
 
 	if d.HasChange("parameter") {
 		o, n := d.GetChange("parameter")
@@ -195,7 +196,10 @@ func resourceAwsDocDBClusterParameterGroupUpdate(d *schema.ResourceData, meta in
 		os := o.(*schema.Set)
 		ns := n.(*schema.Set)
 
-		parameters := expandDocDBParameters(ns.Difference(os).List())
+		parameters, err := expandDocDBParameters(ns.Difference(os).List())
+		if err != nil {
+			return err
+		}
 		if len(parameters) > 0 {
 			// We can only modify 20 parameters at a time, so walk them until
 			// we've got them all.
@@ -223,6 +227,7 @@ func resourceAwsDocDBClusterParameterGroupUpdate(d *schema.ResourceData, meta in
 					return fmt.Errorf("Error modifying DocDB Cluster Parameter Group: %s", err)
 				}
 			}
+			d.SetPartial("parameter")
 		}
 	}
 
@@ -232,7 +237,11 @@ func resourceAwsDocDBClusterParameterGroupUpdate(d *schema.ResourceData, meta in
 		if err := keyvaluetags.DocdbUpdateTags(conn, d.Get("arn").(string), o, n); err != nil {
 			return fmt.Errorf("error updating DocumentDB Cluster Parameter Group (%s) tags: %s", d.Get("arn").(string), err)
 		}
+
+		d.SetPartial("tags")
 	}
+
+	d.Partial(false)
 
 	return resourceAwsDocDBClusterParameterGroupRead(d, meta)
 }

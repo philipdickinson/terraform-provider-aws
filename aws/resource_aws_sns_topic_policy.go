@@ -5,11 +5,12 @@ import (
 	"log"
 	"regexp"
 
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/sns"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
 func resourceAwsSnsTopicPolicy() *schema.Resource {
@@ -32,7 +33,7 @@ func resourceAwsSnsTopicPolicy() *schema.Resource {
 			"policy": {
 				Type:             schema.TypeString,
 				Required:         true,
-				ValidateFunc:     validation.StringIsJSON,
+				ValidateFunc:     validation.ValidateJsonString,
 				DiffSuppressFunc: suppressEquivalentAwsPolicyDiffs,
 			},
 		},

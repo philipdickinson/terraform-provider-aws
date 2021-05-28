@@ -7,9 +7,10 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/apigateway"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 const emptyBasePathMappingValue = "(none)"
@@ -18,7 +19,6 @@ func resourceAwsApiGatewayBasePathMapping() *schema.Resource {
 	return &schema.Resource{
 		Create: resourceAwsApiGatewayBasePathMappingCreate,
 		Read:   resourceAwsApiGatewayBasePathMappingRead,
-		Update: resourceAwsApiGatewayBasePathMappingUpdate,
 		Delete: resourceAwsApiGatewayBasePathMappingDelete,
 		Importer: &schema.ResourceImporter{
 			State: schema.ImportStatePassthrough,
@@ -28,14 +28,17 @@ func resourceAwsApiGatewayBasePathMapping() *schema.Resource {
 			"api_id": {
 				Type:     schema.TypeString,
 				Required: true,
+				ForceNew: true,
 			},
 			"base_path": {
 				Type:     schema.TypeString,
 				Optional: true,
+				ForceNew: true,
 			},
 			"stage_name": {
 				Type:     schema.TypeString,
 				Optional: true,
+				ForceNew: true,
 			},
 			"domain_name": {
 				Type:     schema.TypeString,
@@ -59,7 +62,7 @@ func resourceAwsApiGatewayBasePathMappingCreate(d *schema.ResourceData, meta int
 		_, err := conn.CreateBasePathMapping(input)
 
 		if err != nil {
-			if isAWSErr(err, apigateway.ErrCodeBadRequestException, "") {
+			if err, ok := err.(awserr.Error); ok && err.Code() != "BadRequestException" {
 				return resource.NonRetryableError(err)
 			}
 
@@ -85,66 +88,6 @@ func resourceAwsApiGatewayBasePathMappingCreate(d *schema.ResourceData, meta int
 	return resourceAwsApiGatewayBasePathMappingRead(d, meta)
 }
 
-func resourceAwsApiGatewayBasePathMappingUpdate(d *schema.ResourceData, meta interface{}) error {
-	conn := meta.(*AWSClient).apigatewayconn
-
-	operations := make([]*apigateway.PatchOperation, 0)
-
-	if d.HasChange("stage_name") {
-		operations = append(operations, &apigateway.PatchOperation{
-			Op:    aws.String("replace"),
-			Path:  aws.String("/stage"),
-			Value: aws.String(d.Get("stage_name").(string)),
-		})
-	}
-
-	if d.HasChange("api_id") {
-		operations = append(operations, &apigateway.PatchOperation{
-			Op:    aws.String("replace"),
-			Path:  aws.String("/restapiId"),
-			Value: aws.String(d.Get("api_id").(string)),
-		})
-	}
-
-	if d.HasChange("base_path") {
-		operations = append(operations, &apigateway.PatchOperation{
-			Op:    aws.String("replace"),
-			Path:  aws.String("/basePath"),
-			Value: aws.String(d.Get("base_path").(string)),
-		})
-	}
-
-	domainName, basePath, decodeErr := decodeApiGatewayBasePathMappingId(d.Id())
-	if decodeErr != nil {
-		return decodeErr
-	}
-
-	input := apigateway.UpdateBasePathMappingInput{
-		BasePath:        aws.String(basePath),
-		DomainName:      aws.String(domainName),
-		PatchOperations: operations,
-	}
-
-	log.Printf("[INFO] Updating API Gateway base path mapping: %s", input)
-
-	_, err := conn.UpdateBasePathMapping(&input)
-
-	if err != nil {
-		if err != nil {
-			return fmt.Errorf("Updating API Gateway base path mapping failed: %s", err)
-		}
-	}
-
-	if d.HasChange("base_path") {
-		id := fmt.Sprintf("%s/%s", d.Get("domain_name").(string), d.Get("base_path").(string))
-		d.SetId(id)
-	}
-
-	log.Printf("[DEBUG] API Gateway base path mapping updated: %s", d.Id())
-
-	return resourceAwsApiGatewayBasePathMappingRead(d, meta)
-}
-
 func resourceAwsApiGatewayBasePathMappingRead(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).apigatewayconn
 
@@ -158,7 +101,7 @@ func resourceAwsApiGatewayBasePathMappingRead(d *schema.ResourceData, meta inter
 		BasePath:   aws.String(basePath),
 	})
 	if err != nil {
-		if isAWSErr(err, apigateway.ErrCodeNotFoundException, "") {
+		if err, ok := err.(awserr.Error); ok && err.Code() == "NotFoundException" {
 			log.Printf("[WARN] API Gateway Base Path Mapping (%s) not found, removing from state", d.Id())
 			d.SetId("")
 			return nil
@@ -195,7 +138,7 @@ func resourceAwsApiGatewayBasePathMappingDelete(d *schema.ResourceData, meta int
 	})
 
 	if err != nil {
-		if isAWSErr(err, apigateway.ErrCodeNotFoundException, "") {
+		if err, ok := err.(awserr.Error); ok && err.Code() == "NotFoundException" {
 			return nil
 		}
 

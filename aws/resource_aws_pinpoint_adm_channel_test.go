@@ -5,10 +5,11 @@ import (
 	"os"
 	"testing"
 
-	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/pinpoint"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 /**
@@ -24,6 +25,7 @@ type testAccAwsPinpointADMChannelConfiguration struct {
 }
 
 func testAccAwsPinpointADMChannelConfigurationFromEnv(t *testing.T) *testAccAwsPinpointADMChannelConfiguration {
+
 	if os.Getenv("ADM_CLIENT_ID") == "" {
 		t.Skipf("ADM_CLIENT_ID ENV is missing")
 	}
@@ -110,7 +112,7 @@ func testAccAWSPinpointADMChannelConfig_basic(conf *testAccAwsPinpointADMChannel
 resource "aws_pinpoint_app" "test_app" {}
 
 resource "aws_pinpoint_adm_channel" "channel" {
-  application_id = aws_pinpoint_app.test_app.application_id
+  application_id = "${aws_pinpoint_app.test_app.application_id}"
 
   client_id     = "%s"
   client_secret = "%s"

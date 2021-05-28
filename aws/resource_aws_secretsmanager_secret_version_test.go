@@ -2,20 +2,20 @@ package aws
 
 import (
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/secretsmanager"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccAwsSecretsManagerSecretVersion_BasicString(t *testing.T) {
 	var version secretsmanager.GetSecretValueOutput
 	rName := acctest.RandomWithPrefix("tf-acc-test")
 	resourceName := "aws_secretsmanager_secret_version.test"
-	secretResourceName := "aws_secretsmanager_secret.test"
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckAWSSecretsManager(t) },
@@ -29,8 +29,9 @@ func TestAccAwsSecretsManagerSecretVersion_BasicString(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "secret_string", "test-string"),
 					resource.TestCheckResourceAttrSet(resourceName, "version_id"),
 					resource.TestCheckResourceAttr(resourceName, "version_stages.#", "1"),
-					resource.TestCheckTypeSetElemAttr(resourceName, "version_stages.*", "AWSCURRENT"),
-					resource.TestCheckResourceAttrPair(resourceName, "arn", secretResourceName, "arn"),
+					resource.TestCheckResourceAttr(resourceName, "version_stages.3070137", "AWSCURRENT"),
+					resource.TestMatchResourceAttr(resourceName, "arn",
+						regexp.MustCompile(`^arn:[\w-]+:secretsmanager:[^:]+:\d{12}:secret:.+$`)),
 				),
 			},
 			{
@@ -46,7 +47,6 @@ func TestAccAwsSecretsManagerSecretVersion_Base64Binary(t *testing.T) {
 	var version secretsmanager.GetSecretValueOutput
 	rName := acctest.RandomWithPrefix("tf-acc-test")
 	resourceName := "aws_secretsmanager_secret_version.test"
-	secretResourceName := "aws_secretsmanager_secret.test"
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckAWSSecretsManager(t) },
@@ -60,8 +60,9 @@ func TestAccAwsSecretsManagerSecretVersion_Base64Binary(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "secret_binary", base64Encode([]byte("test-binary"))),
 					resource.TestCheckResourceAttrSet(resourceName, "version_id"),
 					resource.TestCheckResourceAttr(resourceName, "version_stages.#", "1"),
-					resource.TestCheckTypeSetElemAttr(resourceName, "version_stages.*", "AWSCURRENT"),
-					resource.TestCheckResourceAttrPair(resourceName, "arn", secretResourceName, "arn"),
+					resource.TestCheckResourceAttr(resourceName, "version_stages.3070137", "AWSCURRENT"),
+					resource.TestMatchResourceAttr(resourceName, "arn",
+						regexp.MustCompile(`^arn:[\w-]+:secretsmanager:[^:]+:\d{12}:secret:.+$`)),
 				),
 			},
 			{
@@ -89,8 +90,8 @@ func TestAccAwsSecretsManagerSecretVersion_VersionStages(t *testing.T) {
 					testAccCheckAwsSecretsManagerSecretVersionExists(resourceName, &version),
 					resource.TestCheckResourceAttr(resourceName, "secret_string", "test-string"),
 					resource.TestCheckResourceAttr(resourceName, "version_stages.#", "2"),
-					resource.TestCheckTypeSetElemAttr(resourceName, "version_stages.*", "AWSCURRENT"),
-					resource.TestCheckTypeSetElemAttr(resourceName, "version_stages.*", "one"),
+					resource.TestCheckResourceAttr(resourceName, "version_stages.3070137", "AWSCURRENT"),
+					resource.TestCheckResourceAttr(resourceName, "version_stages.2848565413", "one"),
 				),
 			},
 			{
@@ -99,8 +100,8 @@ func TestAccAwsSecretsManagerSecretVersion_VersionStages(t *testing.T) {
 					testAccCheckAwsSecretsManagerSecretVersionExists(resourceName, &version),
 					resource.TestCheckResourceAttr(resourceName, "secret_string", "test-string"),
 					resource.TestCheckResourceAttr(resourceName, "version_stages.#", "2"),
-					resource.TestCheckTypeSetElemAttr(resourceName, "version_stages.*", "AWSCURRENT"),
-					resource.TestCheckTypeSetElemAttr(resourceName, "version_stages.*", "two"),
+					resource.TestCheckResourceAttr(resourceName, "version_stages.3070137", "AWSCURRENT"),
+					resource.TestCheckResourceAttr(resourceName, "version_stages.3351840846", "two"),
 				),
 			},
 			{
@@ -109,9 +110,9 @@ func TestAccAwsSecretsManagerSecretVersion_VersionStages(t *testing.T) {
 					testAccCheckAwsSecretsManagerSecretVersionExists(resourceName, &version),
 					resource.TestCheckResourceAttr(resourceName, "secret_string", "test-string"),
 					resource.TestCheckResourceAttr(resourceName, "version_stages.#", "3"),
-					resource.TestCheckTypeSetElemAttr(resourceName, "version_stages.*", "AWSCURRENT"),
-					resource.TestCheckTypeSetElemAttr(resourceName, "version_stages.*", "one"),
-					resource.TestCheckTypeSetElemAttr(resourceName, "version_stages.*", "two"),
+					resource.TestCheckResourceAttr(resourceName, "version_stages.3070137", "AWSCURRENT"),
+					resource.TestCheckResourceAttr(resourceName, "version_stages.2848565413", "one"),
+					resource.TestCheckResourceAttr(resourceName, "version_stages.3351840846", "two"),
 				),
 			},
 			{
@@ -214,7 +215,7 @@ resource "aws_secretsmanager_secret" "test" {
 }
 
 resource "aws_secretsmanager_secret_version" "test" {
-  secret_id     = aws_secretsmanager_secret.test.id
+  secret_id     = "${aws_secretsmanager_secret.test.id}"
   secret_string = "test-string"
 }
 `, rName)
@@ -227,8 +228,8 @@ resource "aws_secretsmanager_secret" "test" {
 }
 
 resource "aws_secretsmanager_secret_version" "test" {
-  secret_id     = aws_secretsmanager_secret.test.id
-  secret_binary = base64encode("test-binary")
+  secret_id     = "${aws_secretsmanager_secret.test.id}"
+  secret_binary = "${base64encode("test-binary")}"
 }
 `, rName)
 }
@@ -240,7 +241,7 @@ resource "aws_secretsmanager_secret" "test" {
 }
 
 resource "aws_secretsmanager_secret_version" "test" {
-  secret_id     = aws_secretsmanager_secret.test.id
+  secret_id     = "${aws_secretsmanager_secret.test.id}"
   secret_string = "test-string"
 
   version_stages = ["one", "AWSCURRENT"]
@@ -255,7 +256,7 @@ resource "aws_secretsmanager_secret" "test" {
 }
 
 resource "aws_secretsmanager_secret_version" "test" {
-  secret_id     = aws_secretsmanager_secret.test.id
+  secret_id     = "${aws_secretsmanager_secret.test.id}"
   secret_string = "test-string"
 
   version_stages = ["two", "AWSCURRENT"]
@@ -270,7 +271,7 @@ resource "aws_secretsmanager_secret" "test" {
 }
 
 resource "aws_secretsmanager_secret_version" "test" {
-  secret_id     = aws_secretsmanager_secret.test.id
+  secret_id     = "${aws_secretsmanager_secret.test.id}"
   secret_string = "test-string"
 
   version_stages = ["one", "two", "AWSCURRENT"]

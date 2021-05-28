@@ -10,8 +10,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	arn2 "github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/aws/aws-sdk-go/service/lambda"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
 const awsMutexLambdaLayerKey = `aws_lambda_layer_version`
@@ -64,7 +64,7 @@ func resourceAwsLambdaLayerVersion() *schema.Resource {
 				MaxItems: 5,
 				Elem: &schema.Schema{
 					Type:         schema.TypeString,
-					ValidateFunc: validation.StringInSlice(lambda.Runtime_Values(), false),
+					ValidateFunc: validation.StringInSlice(validLambdaRuntimes, false),
 				},
 			},
 			"description": {
@@ -95,14 +95,6 @@ func resourceAwsLambdaLayerVersion() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
-				Computed: true,
-			},
-			"signing_profile_version_arn": {
-				Type:     schema.TypeString,
-				Computed: true,
-			},
-			"signing_job_arn": {
-				Type:     schema.TypeString,
 				Computed: true,
 			},
 			"source_code_size": {
@@ -162,7 +154,7 @@ func resourceAwsLambdaLayerVersionPublish(d *schema.ResourceData, meta interface
 	}
 
 	if v, ok := d.GetOk("compatible_runtimes"); ok && v.(*schema.Set).Len() > 0 {
-		params.CompatibleRuntimes = expandStringSet(v.(*schema.Set))
+		params.CompatibleRuntimes = expandStringList(v.(*schema.Set).List())
 	}
 
 	log.Printf("[DEBUG] Publishing Lambda layer: %s", params)
@@ -221,12 +213,6 @@ func resourceAwsLambdaLayerVersionRead(d *schema.ResourceData, meta interface{})
 	}
 	if err := d.Set("source_code_hash", layerVersion.Content.CodeSha256); err != nil {
 		return fmt.Errorf("Error setting lambda layer source code hash: %s", err)
-	}
-	if err := d.Set("signing_profile_version_arn", layerVersion.Content.SigningProfileVersionArn); err != nil {
-		return fmt.Errorf("Error setting lambda layer signing profile arn: %s", err)
-	}
-	if err := d.Set("signing_job_arn", layerVersion.Content.SigningJobArn); err != nil {
-		return fmt.Errorf("Error setting lambda layer signing job arn: %s", err)
 	}
 	if err := d.Set("source_code_size", layerVersion.Content.CodeSize); err != nil {
 		return fmt.Errorf("Error setting lambda layer source code size: %s", err)

@@ -3,12 +3,12 @@ subcategory: "RDS"
 layout: "aws"
 page_title: "AWS: aws_db_instance_role_association"
 description: |-
-  Manages an RDS DB Instance association with an IAM Role.
+  Manages a RDS DB Instance association with an IAM Role.
 ---
 
 # Resource: aws_db_instance_role_association
 
-Manages an RDS DB Instance association with an IAM Role. Example use cases:
+Manages a RDS DB Instance association with an IAM Role. Example use cases:
 
 * [Amazon RDS Oracle integration with Amazon S3](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/oracle-s3-integration.html)
 * [Importing Amazon S3 Data into an RDS PostgreSQL DB Instance](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_PostgreSQL.S3Import.html)
@@ -19,9 +19,9 @@ Manages an RDS DB Instance association with an IAM Role. Example use cases:
 
 ```hcl
 resource "aws_db_instance_role_association" "example" {
-  db_instance_identifier = aws_db_instance.example.id
+  db_instance_identifier = "${aws_db_instance.example.id}"
   feature_name           = "S3_INTEGRATION"
-  role_arn               = aws_iam_role.example.arn
+  role_arn               = "${aws_iam_role.example.id}"
 }
 ```
 

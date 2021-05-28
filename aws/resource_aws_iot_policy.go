@@ -1,12 +1,11 @@
 package aws
 
 import (
-	"fmt"
 	"log"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iot"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 func resourceAwsIotPolicy() *schema.Resource {
@@ -15,20 +14,14 @@ func resourceAwsIotPolicy() *schema.Resource {
 		Read:   resourceAwsIotPolicyRead,
 		Update: resourceAwsIotPolicyUpdate,
 		Delete: resourceAwsIotPolicyDelete,
-		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
-		},
-
 		Schema: map[string]*schema.Schema{
 			"name": {
 				Type:     schema.TypeString,
 				Required: true,
-				ForceNew: true,
 			},
 			"policy": {
-				Type:             schema.TypeString,
-				Required:         true,
-				DiffSuppressFunc: suppressEquivalentAwsPolicyDiffs,
+				Type:     schema.TypeString,
+				Required: true,
 			},
 			"arn": {
 				Type:     schema.TypeString,
@@ -52,10 +45,11 @@ func resourceAwsIotPolicyCreate(d *schema.ResourceData, meta interface{}) error 
 	})
 
 	if err != nil {
-		return fmt.Errorf("error creating IoT Policy: %s", err)
+		log.Printf("[ERROR] %s", err)
+		return err
 	}
 
-	d.SetId(aws.StringValue(out.PolicyName))
+	d.SetId(*out.PolicyName)
 
 	return resourceAwsIotPolicyRead(d, meta)
 }
@@ -67,20 +61,13 @@ func resourceAwsIotPolicyRead(d *schema.ResourceData, meta interface{}) error {
 		PolicyName: aws.String(d.Id()),
 	})
 
-	if isAWSErr(err, iot.ErrCodeResourceNotFoundException, "") {
-		log.Printf("[WARN] IoT Policy (%s) not found, removing from state", d.Id())
-		d.SetId("")
-		return nil
-	}
-
 	if err != nil {
-		return fmt.Errorf("error reading IoT Policy (%s): %s", d.Id(), err)
+		log.Printf("[ERROR] %s", err)
+		return err
 	}
 
 	d.Set("arn", out.PolicyArn)
 	d.Set("default_version_id", out.DefaultVersionId)
-	d.Set("name", out.PolicyName)
-	d.Set("policy", out.PolicyDocument)
 
 	return nil
 }
@@ -96,7 +83,8 @@ func resourceAwsIotPolicyUpdate(d *schema.ResourceData, meta interface{}) error 
 		})
 
 		if err != nil {
-			return fmt.Errorf("error updating IoT Policy (%s): %s", d.Id(), err)
+			log.Printf("[ERROR] %s", err)
+			return err
 		}
 	}
 
@@ -112,23 +100,19 @@ func resourceAwsIotPolicyDelete(d *schema.ResourceData, meta interface{}) error 
 	})
 
 	if err != nil {
-		return fmt.Errorf("error listing IoT Policy (%s) versions: %s", d.Id(), err)
+		return err
 	}
 
 	// Delete all non-default versions of the policy
 	for _, ver := range out.PolicyVersions {
-		if !aws.BoolValue(ver.IsDefaultVersion) {
+		if !*ver.IsDefaultVersion {
 			_, err = conn.DeletePolicyVersion(&iot.DeletePolicyVersionInput{
 				PolicyName:      aws.String(d.Id()),
 				PolicyVersionId: ver.VersionId,
 			})
-
-			if isAWSErr(err, iot.ErrCodeResourceNotFoundException, "") {
-				continue
-			}
-
 			if err != nil {
-				return fmt.Errorf("error deleting IoT Policy (%s) version (%s): %s", d.Id(), aws.StringValue(ver.VersionId), err)
+				log.Printf("[ERROR] %s", err)
+				return err
 			}
 		}
 	}
@@ -138,12 +122,9 @@ func resourceAwsIotPolicyDelete(d *schema.ResourceData, meta interface{}) error 
 		PolicyName: aws.String(d.Id()),
 	})
 
-	if isAWSErr(err, iot.ErrCodeResourceNotFoundException, "") {
-		return nil
-	}
-
 	if err != nil {
-		return fmt.Errorf("error deleting IoT Policy (%s): %s", d.Id(), err)
+		log.Printf("[ERROR] %s", err)
+		return err
 	}
 
 	return nil

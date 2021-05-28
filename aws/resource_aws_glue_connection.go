@@ -6,10 +6,9 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/aws/aws-sdk-go/service/glue"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
 func resourceAwsGlueConnection() *schema.Resource {
@@ -23,10 +22,6 @@ func resourceAwsGlueConnection() *schema.Resource {
 		},
 
 		Schema: map[string]*schema.Schema{
-			"arn": {
-				Type:     schema.TypeString,
-				Computed: true,
-			},
 			"catalog_id": {
 				Type:     schema.TypeString,
 				ForceNew: true,
@@ -37,13 +32,15 @@ func resourceAwsGlueConnection() *schema.Resource {
 				Type:      schema.TypeMap,
 				Required:  true,
 				Sensitive: true,
-				Elem:      &schema.Schema{Type: schema.TypeString},
 			},
 			"connection_type": {
-				Type:         schema.TypeString,
-				Optional:     true,
-				Default:      glue.ConnectionTypeJdbc,
-				ValidateFunc: validation.StringInSlice(glue.ConnectionType_Values(), false),
+				Type:     schema.TypeString,
+				Optional: true,
+				Default:  glue.ConnectionTypeJdbc,
+				ValidateFunc: validation.StringInSlice([]string{
+					glue.ConnectionTypeJdbc,
+					glue.ConnectionTypeSftp,
+				}, false),
 			},
 			"description": {
 				Type:     schema.TypeString,
@@ -71,7 +68,7 @@ func resourceAwsGlueConnection() *schema.Resource {
 							Optional: true,
 						},
 						"security_group_id_list": {
-							Type:     schema.TypeSet,
+							Type:     schema.TypeList,
 							Optional: true,
 							Elem:     &schema.Schema{Type: schema.TypeString},
 						},
@@ -104,7 +101,7 @@ func resourceAwsGlueConnectionCreate(d *schema.ResourceData, meta interface{}) e
 	log.Printf("[DEBUG] Creating Glue Connection: %s", input)
 	_, err := conn.CreateConnection(input)
 	if err != nil {
-		return fmt.Errorf("error creating Glue Connection (%s): %w", name, err)
+		return fmt.Errorf("error creating Glue Connection (%s): %s", name, err)
 	}
 
 	d.SetId(fmt.Sprintf("%s:%s", catalogID, name))
@@ -133,7 +130,7 @@ func resourceAwsGlueConnectionRead(d *schema.ResourceData, meta interface{}) err
 			d.SetId("")
 			return nil
 		}
-		return fmt.Errorf("error reading Glue Connection (%s): %w", d.Id(), err)
+		return fmt.Errorf("error reading Glue Connection (%s): %s", d.Id(), err)
 	}
 
 	connection := output.Connection
@@ -143,27 +140,18 @@ func resourceAwsGlueConnectionRead(d *schema.ResourceData, meta interface{}) err
 		return nil
 	}
 
-	connectionArn := arn.ARN{
-		Partition: meta.(*AWSClient).partition,
-		Service:   "glue",
-		Region:    meta.(*AWSClient).region,
-		AccountID: meta.(*AWSClient).accountid,
-		Resource:  fmt.Sprintf("connection/%s", connectionName),
-	}.String()
-	d.Set("arn", connectionArn)
-
 	d.Set("catalog_id", catalogID)
 	if err := d.Set("connection_properties", aws.StringValueMap(connection.ConnectionProperties)); err != nil {
-		return fmt.Errorf("error setting connection_properties: %w", err)
+		return fmt.Errorf("error setting connection_properties: %s", err)
 	}
 	d.Set("connection_type", connection.ConnectionType)
 	d.Set("description", connection.Description)
 	if err := d.Set("match_criteria", flattenStringList(connection.MatchCriteria)); err != nil {
-		return fmt.Errorf("error setting match_criteria: %w", err)
+		return fmt.Errorf("error setting match_criteria: %s", err)
 	}
 	d.Set("name", connection.Name)
 	if err := d.Set("physical_connection_requirements", flattenGluePhysicalConnectionRequirements(connection.PhysicalConnectionRequirements)); err != nil {
-		return fmt.Errorf("error setting physical_connection_requirements: %w", err)
+		return fmt.Errorf("error setting physical_connection_requirements: %s", err)
 	}
 
 	return nil
@@ -186,7 +174,7 @@ func resourceAwsGlueConnectionUpdate(d *schema.ResourceData, meta interface{}) e
 	log.Printf("[DEBUG] Updating Glue Connection: %s", input)
 	_, err = conn.UpdateConnection(input)
 	if err != nil {
-		return fmt.Errorf("error updating Glue Connection (%s): %w", d.Id(), err)
+		return fmt.Errorf("error updating Glue Connection (%s): %s", d.Id(), err)
 	}
 
 	return nil
@@ -203,7 +191,7 @@ func resourceAwsGlueConnectionDelete(d *schema.ResourceData, meta interface{}) e
 	log.Printf("[DEBUG] Deleting Glue Connection: %s", d.Id())
 	err = deleteGlueConnection(conn, catalogID, connectionName)
 	if err != nil {
-		return fmt.Errorf("error deleting Glue Connection (%s): %w", d.Id(), err)
+		return fmt.Errorf("error deleting Glue Connection (%s): %s", d.Id(), err)
 	}
 
 	return nil
@@ -271,7 +259,7 @@ func expandGluePhysicalConnectionRequirements(m map[string]interface{}) *glue.Ph
 	}
 
 	if v, ok := m["security_group_id_list"]; ok {
-		physicalConnectionRequirements.SecurityGroupIdList = expandStringSet(v.(*schema.Set))
+		physicalConnectionRequirements.SecurityGroupIdList = expandStringList(v.([]interface{}))
 	}
 
 	if v, ok := m["subnet_id"]; ok {
@@ -288,7 +276,7 @@ func flattenGluePhysicalConnectionRequirements(physicalConnectionRequirements *g
 
 	m := map[string]interface{}{
 		"availability_zone":      aws.StringValue(physicalConnectionRequirements.AvailabilityZone),
-		"security_group_id_list": flattenStringSet(physicalConnectionRequirements.SecurityGroupIdList),
+		"security_group_id_list": flattenStringList(physicalConnectionRequirements.SecurityGroupIdList),
 		"subnet_id":              aws.StringValue(physicalConnectionRequirements.SubnetId),
 	}
 

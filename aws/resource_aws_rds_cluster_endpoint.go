@@ -7,14 +7,13 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/rds"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 	"github.com/terraform-providers/terraform-provider-aws/aws/internal/keyvaluetags"
 )
 
 const (
-	AWSRDSClusterEndpointCreateTimeout   = 30 * time.Minute
 	AWSRDSClusterEndpointRetryDelay      = 5 * time.Second
 	AWSRDSClusterEndpointRetryMinTimeout = 3 * time.Second
 )
@@ -105,7 +104,7 @@ func resourceAwsRDSClusterEndpointCreate(d *schema.ResourceData, meta interface{
 
 	d.SetId(endpointId)
 
-	err = resourceAwsRDSClusterEndpointWaitForAvailable(AWSRDSClusterEndpointCreateTimeout, d.Id(), conn)
+	err = resourceAwsRDSClusterEndpointWaitForAvailable(d.Timeout(schema.TimeoutDelete), d.Id(), conn)
 	if err != nil {
 		return err
 	}
@@ -115,7 +114,6 @@ func resourceAwsRDSClusterEndpointCreate(d *schema.ResourceData, meta interface{
 
 func resourceAwsRDSClusterEndpointRead(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).rdsconn
-	ignoreTagsConfig := meta.(*AWSClient).IgnoreTagsConfig
 
 	input := &rds.DescribeDBClusterEndpointsInput{
 		DBClusterEndpointIdentifier: aws.String(d.Id()),
@@ -166,7 +164,7 @@ func resourceAwsRDSClusterEndpointRead(d *schema.ResourceData, meta interface{})
 		return fmt.Errorf("error listing tags for RDS Cluster Endpoint (%s): %s", *arn, err)
 	}
 
-	if err := d.Set("tags", tags.IgnoreAws().IgnoreConfig(ignoreTagsConfig).Map()); err != nil {
+	if err := d.Set("tags", tags.IgnoreAws().Map()); err != nil {
 		return fmt.Errorf("error setting tags: %s", err)
 	}
 
@@ -192,13 +190,13 @@ func resourceAwsRDSClusterEndpointUpdate(d *schema.ResourceData, meta interface{
 	}
 
 	if attr := d.Get("excluded_members").(*schema.Set); attr.Len() > 0 {
-		input.ExcludedMembers = expandStringSet(attr)
+		input.ExcludedMembers = expandStringList(attr.List())
 	} else {
 		input.ExcludedMembers = make([]*string, 0)
 	}
 
 	if attr := d.Get("static_members").(*schema.Set); attr.Len() > 0 {
-		input.StaticMembers = expandStringSet(attr)
+		input.StaticMembers = expandStringList(attr.List())
 	} else {
 		input.StaticMembers = make([]*string, 0)
 	}

@@ -8,8 +8,9 @@ import (
 	"sync"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/apigateway"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 var resourceAwsApiGatewayMethodResponseMutex = &sync.Mutex{}
@@ -75,6 +76,12 @@ func resourceAwsApiGatewayMethodResponse() *schema.Resource {
 				Elem:     &schema.Schema{Type: schema.TypeBool},
 				Optional: true,
 			},
+
+			"response_parameters_in_json": {
+				Type:     schema.TypeString,
+				Optional: true,
+				Removed:  "Use `response_parameters` argument instead",
+			},
 		},
 	}
 }
@@ -133,7 +140,7 @@ func resourceAwsApiGatewayMethodResponseRead(d *schema.ResourceData, meta interf
 		StatusCode: aws.String(d.Get("status_code").(string)),
 	})
 	if err != nil {
-		if isAWSErr(err, apigateway.ErrCodeNotFoundException, "") {
+		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "NotFoundException" {
 			log.Printf("[WARN] API Gateway Response (%s) not found, removing from state", d.Id())
 			d.SetId("")
 			return nil
@@ -165,7 +172,10 @@ func resourceAwsApiGatewayMethodResponseUpdate(d *schema.ResourceData, meta inte
 	}
 
 	if d.HasChange("response_parameters") {
-		ops := expandApiGatewayMethodParametersOperations(d, "response_parameters", "responseParameters")
+		ops, err := expandApiGatewayMethodParametersOperations(d, "response_parameters", "responseParameters")
+		if err != nil {
+			return err
+		}
 		operations = append(operations, ops...)
 	}
 

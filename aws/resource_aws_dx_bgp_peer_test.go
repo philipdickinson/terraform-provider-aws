@@ -8,9 +8,8 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/directconnect"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccAwsDxBgpPeer_basic(t *testing.T) {
@@ -19,7 +18,7 @@ func TestAccAwsDxBgpPeer_basic(t *testing.T) {
 	if vifId == "" {
 		t.Skipf("Environment variable %s is not set", key)
 	}
-	bgpAsn := acctest.RandIntRange(64512, 65534)
+	bgpAsn := randIntRange(64512, 65534)
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },

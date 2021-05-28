@@ -2,17 +2,17 @@ package aws
 
 import (
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/sns"
-	multierror "github.com/hashicorp/go-multierror"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 // The preferences are account-wide, so the tests must be serialized
-func TestAccAWSSNSSMSPreferences_serial(t *testing.T) {
+func TestAccAWSSNSSMSPreferences(t *testing.T) {
 	testCases := map[string]func(t *testing.T){
 		"almostAll":      testAccAWSSNSSMSPreferences_almostAll,
 		"defaultSMSType": testAccAWSSNSSMSPreferences_defaultSMSType,
@@ -29,8 +29,6 @@ func TestAccAWSSNSSMSPreferences_serial(t *testing.T) {
 }
 
 func testAccAWSSNSSMSPreferences_empty(t *testing.T) {
-	resourceName := "aws_sns_sms_preferences.test_pref"
-
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProviders,
@@ -39,12 +37,12 @@ func testAccAWSSNSSMSPreferences_empty(t *testing.T) {
 			{
 				Config: testAccAWSSNSSMSPreferencesConfig_empty,
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckNoResourceAttr(resourceName, "monthly_spend_limit"),
-					resource.TestCheckNoResourceAttr(resourceName, "delivery_status_iam_role_arn"),
-					resource.TestCheckNoResourceAttr(resourceName, "delivery_status_success_sampling_rate"),
-					resource.TestCheckNoResourceAttr(resourceName, "default_sender_id"),
-					resource.TestCheckNoResourceAttr(resourceName, "default_sms_type"),
-					resource.TestCheckNoResourceAttr(resourceName, "usage_report_s3_bucket"),
+					resource.TestCheckNoResourceAttr("aws_sns_sms_preferences.test_pref", "monthly_spend_limit"),
+					resource.TestCheckNoResourceAttr("aws_sns_sms_preferences.test_pref", "delivery_status_iam_role_arn"),
+					resource.TestCheckNoResourceAttr("aws_sns_sms_preferences.test_pref", "delivery_status_success_sampling_rate"),
+					resource.TestCheckNoResourceAttr("aws_sns_sms_preferences.test_pref", "default_sender_id"),
+					resource.TestCheckNoResourceAttr("aws_sns_sms_preferences.test_pref", "default_sms_type"),
+					resource.TestCheckNoResourceAttr("aws_sns_sms_preferences.test_pref", "usage_report_s3_bucket"),
 				),
 			},
 		},
@@ -52,8 +50,6 @@ func testAccAWSSNSSMSPreferences_empty(t *testing.T) {
 }
 
 func testAccAWSSNSSMSPreferences_defaultSMSType(t *testing.T) {
-	resourceName := "aws_sns_sms_preferences.test_pref"
-
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProviders,
@@ -62,12 +58,12 @@ func testAccAWSSNSSMSPreferences_defaultSMSType(t *testing.T) {
 			{
 				Config: testAccAWSSNSSMSPreferencesConfig_defSMSType,
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckNoResourceAttr(resourceName, "monthly_spend_limit"),
-					resource.TestCheckNoResourceAttr(resourceName, "delivery_status_iam_role_arn"),
-					resource.TestCheckNoResourceAttr(resourceName, "delivery_status_success_sampling_rate"),
-					resource.TestCheckNoResourceAttr(resourceName, "default_sender_id"),
-					resource.TestCheckResourceAttr(resourceName, "default_sms_type", "Transactional"),
-					resource.TestCheckNoResourceAttr(resourceName, "usage_report_s3_bucket"),
+					resource.TestCheckNoResourceAttr("aws_sns_sms_preferences.test_pref", "monthly_spend_limit"),
+					resource.TestCheckNoResourceAttr("aws_sns_sms_preferences.test_pref", "delivery_status_iam_role_arn"),
+					resource.TestCheckNoResourceAttr("aws_sns_sms_preferences.test_pref", "delivery_status_success_sampling_rate"),
+					resource.TestCheckNoResourceAttr("aws_sns_sms_preferences.test_pref", "default_sender_id"),
+					resource.TestCheckResourceAttr("aws_sns_sms_preferences.test_pref", "default_sms_type", "Transactional"),
+					resource.TestCheckNoResourceAttr("aws_sns_sms_preferences.test_pref", "usage_report_s3_bucket"),
 				),
 			},
 		},
@@ -75,8 +71,6 @@ func testAccAWSSNSSMSPreferences_defaultSMSType(t *testing.T) {
 }
 
 func testAccAWSSNSSMSPreferences_almostAll(t *testing.T) {
-	resourceName := "aws_sns_sms_preferences.test_pref"
-
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProviders,
@@ -85,9 +79,9 @@ func testAccAWSSNSSMSPreferences_almostAll(t *testing.T) {
 			{
 				Config: testAccAWSSNSSMSPreferencesConfig_almostAll,
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr(resourceName, "monthly_spend_limit", "1"),
-					resource.TestCheckResourceAttr(resourceName, "default_sms_type", "Transactional"),
-					resource.TestCheckResourceAttr(resourceName, "usage_report_s3_bucket", "some-bucket"),
+					resource.TestCheckResourceAttr("aws_sns_sms_preferences.test_pref", "monthly_spend_limit", "1"),
+					resource.TestCheckResourceAttr("aws_sns_sms_preferences.test_pref", "default_sms_type", "Transactional"),
+					resource.TestCheckResourceAttr("aws_sns_sms_preferences.test_pref", "usage_report_s3_bucket", "some-bucket"),
 				),
 			},
 		},
@@ -95,9 +89,7 @@ func testAccAWSSNSSMSPreferences_almostAll(t *testing.T) {
 }
 
 func testAccAWSSNSSMSPreferences_deliveryRole(t *testing.T) {
-	resourceName := "aws_sns_sms_preferences.test_pref"
-	iamRoleName := "aws_iam_role.test_smsdelivery_role"
-
+	arnRole := regexp.MustCompile(`^arn:aws:iam::\d+:role/test_smsdelivery_role$`)
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProviders,
@@ -106,8 +98,8 @@ func testAccAWSSNSSMSPreferences_deliveryRole(t *testing.T) {
 			{
 				Config: testAccAWSSNSSMSPreferencesConfig_deliveryRole,
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttrPair(resourceName, "delivery_status_iam_role_arn", iamRoleName, "arn"),
-					resource.TestCheckResourceAttr(resourceName, "delivery_status_success_sampling_rate", "75"),
+					resource.TestMatchResourceAttr("aws_sns_sms_preferences.test_pref", "delivery_status_iam_role_arn", arnRole),
+					resource.TestCheckResourceAttr("aws_sns_sms_preferences.test_pref", "delivery_status_success_sampling_rate", "75"),
 				),
 			},
 		},
@@ -129,17 +121,13 @@ func testAccCheckAWSSNSSMSPrefsDestroy(s *terraform.State) error {
 			return nil
 		}
 
-		var attrErrs *multierror.Error
-
-		// The API is returning undocumented keys, e.g. "UsageReportS3Enabled". Only check the keys we're aware of.
-		for _, snsAttrName := range smsAttributeMap {
-			v := aws.StringValue(attrs.Attributes[snsAttrName])
-			if v != "" {
-				attrErrs = multierror.Append(attrErrs, fmt.Errorf("expected SMS attribute %q to be empty, but received: %q", snsAttrName, v))
+		for attrName, attrValue := range attrs.Attributes {
+			if aws.StringValue(attrValue) != "" {
+				return fmt.Errorf("expected SMS attribute %q to be empty, but received: %s", attrName, aws.StringValue(attrValue))
 			}
 		}
 
-		return attrErrs.ErrorOrNil()
+		return nil
 	}
 
 	return nil
@@ -150,29 +138,21 @@ resource "aws_sns_sms_preferences" "test_pref" {}
 `
 const testAccAWSSNSSMSPreferencesConfig_defSMSType = `
 resource "aws_sns_sms_preferences" "test_pref" {
-  default_sms_type = "Transactional"
+	default_sms_type = "Transactional"
 }
 `
-
 const testAccAWSSNSSMSPreferencesConfig_almostAll = `
 resource "aws_sns_sms_preferences" "test_pref" {
-  monthly_spend_limit    = "1"
-  default_sms_type       = "Transactional"
-  usage_report_s3_bucket = "some-bucket"
+	monthly_spend_limit = "1"
+	default_sms_type = "Transactional"
+	usage_report_s3_bucket = "some-bucket"
 }
 `
-
 const testAccAWSSNSSMSPreferencesConfig_deliveryRole = `
-resource "aws_sns_sms_preferences" "test_pref" {
-  delivery_status_iam_role_arn          = aws_iam_role.test_smsdelivery_role.arn
-  delivery_status_success_sampling_rate = "75"
-}
-
 resource "aws_iam_role" "test_smsdelivery_role" {
-  name = "test_smsdelivery_role"
-  path = "/"
-
-  assume_role_policy = <<POLICY
+    name = "test_smsdelivery_role"
+    path = "/"
+    assume_role_policy = <<POLICY
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -190,21 +170,14 @@ POLICY
 }
 
 resource "aws_iam_role_policy" "test_smsdelivery_role_policy" {
-  name = "test_smsdelivery_role_policy"
-  role = aws_iam_role.test_smsdelivery_role.id
-
+  name   = "test_smsdelivery_role_policy"
+  role   = "${aws_iam_role.test_smsdelivery_role.id}"
   policy = <<POLICY
 {
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Action": [
-        "logs:CreateLogGroup",
-        "logs:CreateLogStream",
-        "logs:PutLogEvents",
-        "logs:PutMetricFilter",
-        "logs:PutRetentionPolicy"
-      ],
+      "Action": ["logs:CreateLogGroup","logs:CreateLogStream","logs:PutLogEvents","logs:PutMetricFilter","logs:PutRetentionPolicy"],
       "Resource": "*",
       "Effect": "Allow",
       "Sid": ""
@@ -212,5 +185,10 @@ resource "aws_iam_role_policy" "test_smsdelivery_role_policy" {
   ]
 }
 POLICY
+}
+
+resource "aws_sns_sms_preferences" "test_pref" {
+	delivery_status_iam_role_arn = "${aws_iam_role.test_smsdelivery_role.arn}"
+	delivery_status_success_sampling_rate = "75"
 }
 `

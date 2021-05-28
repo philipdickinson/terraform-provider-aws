@@ -16,10 +16,10 @@ Information about single EC2 Instance Type Offering.
 data "aws_ec2_instance_type_offering" "example" {
   filter {
     name   = "instance-type"
-    values = ["t2.micro", "t3.micro"]
+    values = ["t1.micro", "t2.micro", "t3.micro"]
   }
 
-  preferred_instance_types = ["t3.micro", "t2.micro"]
+  preferred_instance_types = ["t3.micro", "t2.micro", "t1.micro"]
 }
 ```
 
@@ -40,5 +40,4 @@ The following arguments are supported:
 
 In addition to all arguments above, the following attributes are exported:
 
-* `id` - EC2 Instance Type.
 * `instance_type` - EC2 Instance Type.

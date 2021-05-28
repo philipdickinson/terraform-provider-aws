@@ -1,1 +1,5 @@
-aws_region = "us-west-2"
+aws_access_key = "yourawsaccesskey"
+
+aws_secret_key = "yourawssecretkey"
+
+aws_region = "us-east-1"

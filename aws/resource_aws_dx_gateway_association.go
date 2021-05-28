@@ -1,6 +1,7 @@
 package aws
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -8,8 +9,8 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/directconnect"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 const (
@@ -48,7 +49,7 @@ func resourceAwsDxGatewayAssociation() *schema.Resource {
 				Optional:      true,
 				Computed:      true,
 				ForceNew:      true,
-				ConflictsWith: []string{"associated_gateway_owner_account_id", "proposal_id"},
+				ConflictsWith: []string{"associated_gateway_owner_account_id", "proposal_id", "vpn_gateway_id"},
 			},
 
 			"associated_gateway_owner_account_id": {
@@ -57,7 +58,7 @@ func resourceAwsDxGatewayAssociation() *schema.Resource {
 				Computed:      true,
 				ForceNew:      true,
 				ValidateFunc:  validateAwsAccountId,
-				ConflictsWith: []string{"associated_gateway_id"},
+				ConflictsWith: []string{"associated_gateway_id", "vpn_gateway_id"},
 			},
 
 			"associated_gateway_type": {
@@ -85,14 +86,22 @@ func resourceAwsDxGatewayAssociation() *schema.Resource {
 				Type:          schema.TypeString,
 				Optional:      true,
 				ForceNew:      true,
-				ConflictsWith: []string{"associated_gateway_id"},
+				ConflictsWith: []string{"associated_gateway_id", "vpn_gateway_id"},
+			},
+
+			"vpn_gateway_id": {
+				Type:          schema.TypeString,
+				Optional:      true,
+				ForceNew:      true,
+				ConflictsWith: []string{"associated_gateway_id", "associated_gateway_owner_account_id", "proposal_id"},
+				Deprecated:    "use 'associated_gateway_id' argument instead",
 			},
 		},
 
 		Timeouts: &schema.ResourceTimeout{
-			Create: schema.DefaultTimeout(30 * time.Minute),
-			Update: schema.DefaultTimeout(30 * time.Minute),
-			Delete: schema.DefaultTimeout(30 * time.Minute),
+			Create: schema.DefaultTimeout(15 * time.Minute),
+			Update: schema.DefaultTimeout(10 * time.Minute),
+			Delete: schema.DefaultTimeout(15 * time.Minute),
 		},
 	}
 }
@@ -102,6 +111,7 @@ func resourceAwsDxGatewayAssociationCreate(d *schema.ResourceData, meta interfac
 
 	dxgwId := d.Get("dx_gateway_id").(string)
 	gwIdRaw, gwIdOk := d.GetOk("associated_gateway_id")
+	vgwIdRaw, vgwIdOk := d.GetOk("vpn_gateway_id")
 	gwAcctIdRaw, gwAcctIdOk := d.GetOk("associated_gateway_owner_account_id")
 	proposalIdRaw, proposalIdOk := d.GetOk("proposal_id")
 
@@ -110,8 +120,8 @@ func resourceAwsDxGatewayAssociationCreate(d *schema.ResourceData, meta interfac
 		if !(gwAcctIdOk && proposalIdOk) {
 			return fmt.Errorf("associated_gateway_owner_account_id and proposal_id must be configured")
 		}
-	} else if !gwIdOk {
-		return fmt.Errorf("either associated_gateway_owner_account_id and proposal_id, or associated_gateway_id, must be configured")
+	} else if !(gwIdOk || vgwIdOk) {
+		return fmt.Errorf("either associated_gateway_owner_account_id and proposal_id or one of associated_gateway_id or vpn_gateway_id must be configured")
 	}
 
 	associationId := ""
@@ -133,12 +143,17 @@ func resourceAwsDxGatewayAssociationCreate(d *schema.ResourceData, meta interfac
 		associationId = aws.StringValue(resp.DirectConnectGatewayAssociation.AssociationId)
 		d.SetId(dxGatewayAssociationId(dxgwId, aws.StringValue(resp.DirectConnectGatewayAssociation.AssociatedGateway.Id)))
 	} else {
-		gwId := gwIdRaw.(string)
-
 		req := &directconnect.CreateDirectConnectGatewayAssociationInput{
 			AddAllowedPrefixesToDirectConnectGateway: expandDxRouteFilterPrefixes(d.Get("allowed_prefixes").(*schema.Set)),
 			DirectConnectGatewayId:                   aws.String(dxgwId),
-			GatewayId:                                aws.String(gwId),
+		}
+		gwId := ""
+		if gwIdOk {
+			gwId = gwIdRaw.(string)
+			req.GatewayId = aws.String(gwId)
+		} else {
+			gwId = vgwIdRaw.(string)
+			req.VirtualGatewayId = aws.String(gwId)
 		}
 
 		log.Printf("[DEBUG] Creating Direct Connect gateway association: %#v", req)
@@ -181,7 +196,11 @@ func resourceAwsDxGatewayAssociationRead(d *schema.ResourceData, meta interface{
 		return fmt.Errorf("error setting allowed_prefixes: %s", err)
 	}
 
-	d.Set("associated_gateway_id", assoc.AssociatedGateway.Id)
+	if _, ok := d.GetOk("vpn_gateway_id"); ok {
+		d.Set("vpn_gateway_id", assoc.VirtualGatewayId)
+	} else {
+		d.Set("associated_gateway_id", assoc.AssociatedGateway.Id)
+	}
 	d.Set("associated_gateway_owner_account_id", assoc.AssociatedGateway.OwnerAccount)
 	d.Set("associated_gateway_type", assoc.AssociatedGateway.Type)
 	d.Set("dx_gateway_association_id", assoc.AssociationId)
@@ -193,6 +212,12 @@ func resourceAwsDxGatewayAssociationRead(d *schema.ResourceData, meta interface{
 
 func resourceAwsDxGatewayAssociationUpdate(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).dxconn
+
+	_, gwIdOk := d.GetOk("associated_gateway_id")
+	_, vgwIdOk := d.GetOk("vpn_gateway_id")
+	if !gwIdOk && !vgwIdOk {
+		return errors.New("one of associated_gateway_id or vpn_gateway_id must be configured")
+	}
 
 	if d.HasChange("allowed_prefixes") {
 		associationId := d.Get("dx_gateway_association_id").(string)

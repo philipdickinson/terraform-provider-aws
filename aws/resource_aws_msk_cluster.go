@@ -1,17 +1,15 @@
 package aws
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/kafka"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/customdiff"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 	"github.com/terraform-providers/terraform-provider-aws/aws/internal/keyvaluetags"
 )
 
@@ -24,21 +22,12 @@ func resourceAwsMskCluster() *schema.Resource {
 		Importer: &schema.ResourceImporter{
 			State: schema.ImportStatePassthrough,
 		},
-		CustomizeDiff: customdiff.Sequence(
-			customdiff.ForceNewIfChange("kafka_version", func(_ context.Context, old, new, meta interface{}) bool {
-				return new.(string) < old.(string)
-			}),
-		),
 		Schema: map[string]*schema.Schema{
 			"arn": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
 			"bootstrap_brokers": {
-				Type:     schema.TypeString,
-				Computed: true,
-			},
-			"bootstrap_brokers_sasl_scram": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
@@ -98,22 +87,6 @@ func resourceAwsMskCluster() *schema.Resource {
 				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"sasl": {
-							Type:     schema.TypeList,
-							Optional: true,
-							ForceNew: true,
-							MaxItems: 1,
-							Elem: &schema.Resource{
-								Schema: map[string]*schema.Schema{
-									"scram": {
-										Type:     schema.TypeBool,
-										Optional: true,
-										ForceNew: true,
-									},
-								},
-							},
-							ConflictsWith: []string{"client_authentication.0.tls"},
-						},
 						"tls": {
 							Type:     schema.TypeList,
 							Optional: true,
@@ -190,11 +163,15 @@ func resourceAwsMskCluster() *schema.Resource {
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
 									"client_broker": {
-										Type:         schema.TypeString,
-										Optional:     true,
-										ForceNew:     true,
-										Default:      kafka.ClientBrokerTls,
-										ValidateFunc: validation.StringInSlice(kafka.ClientBroker_Values(), false),
+										Type:     schema.TypeString,
+										Optional: true,
+										ForceNew: true,
+										Default:  kafka.ClientBrokerTlsPlaintext,
+										ValidateFunc: validation.StringInSlice([]string{
+											kafka.ClientBrokerPlaintext,
+											kafka.ClientBrokerTlsPlaintext,
+											kafka.ClientBrokerTls,
+										}, false),
 									},
 									"in_cluster": {
 										Type:     schema.TypeBool,
@@ -209,14 +186,19 @@ func resourceAwsMskCluster() *schema.Resource {
 				},
 			},
 			"enhanced_monitoring": {
-				Type:         schema.TypeString,
-				Optional:     true,
-				Default:      kafka.EnhancedMonitoringDefault,
-				ValidateFunc: validation.StringInSlice(kafka.EnhancedMonitoring_Values(), true),
+				Type:     schema.TypeString,
+				Optional: true,
+				Default:  kafka.EnhancedMonitoringDefault,
+				ValidateFunc: validation.StringInSlice([]string{
+					kafka.EnhancedMonitoringDefault,
+					kafka.EnhancedMonitoringPerBroker,
+					kafka.EnhancedMonitoringPerTopicPerBroker,
+				}, true),
 			},
 			"kafka_version": {
 				Type:         schema.TypeString,
 				Required:     true,
+				ForceNew:     true,
 				ValidateFunc: validation.StringLenBetween(1, 64),
 			},
 			"number_of_broker_nodes": {
@@ -270,83 +252,6 @@ func resourceAwsMskCluster() *schema.Resource {
 					},
 				},
 			},
-			"logging_info": {
-				Type:             schema.TypeList,
-				Optional:         true,
-				DiffSuppressFunc: suppressMissingOptionalConfigurationBlock,
-				MaxItems:         1,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"broker_logs": {
-							Type:     schema.TypeList,
-							Required: true,
-							MaxItems: 1,
-							Elem: &schema.Resource{
-								Schema: map[string]*schema.Schema{
-									"cloudwatch_logs": {
-										Type:             schema.TypeList,
-										Optional:         true,
-										DiffSuppressFunc: suppressMissingOptionalConfigurationBlock,
-										MaxItems:         1,
-										Elem: &schema.Resource{
-											Schema: map[string]*schema.Schema{
-												"enabled": {
-													Type:     schema.TypeBool,
-													Required: true,
-												},
-												"log_group": {
-													Type:     schema.TypeString,
-													Optional: true,
-												},
-											},
-										},
-									},
-									"firehose": {
-										Type:             schema.TypeList,
-										Optional:         true,
-										DiffSuppressFunc: suppressMissingOptionalConfigurationBlock,
-										MaxItems:         1,
-										Elem: &schema.Resource{
-											Schema: map[string]*schema.Schema{
-												"enabled": {
-													Type:     schema.TypeBool,
-													Required: true,
-												},
-												"delivery_stream": {
-													Type:     schema.TypeString,
-													Optional: true,
-												},
-											},
-										},
-									},
-									"s3": {
-										Type:             schema.TypeList,
-										Optional:         true,
-										DiffSuppressFunc: suppressMissingOptionalConfigurationBlock,
-										MaxItems:         1,
-										Elem: &schema.Resource{
-											Schema: map[string]*schema.Schema{
-												"enabled": {
-													Type:     schema.TypeBool,
-													Required: true,
-												},
-												"bucket": {
-													Type:     schema.TypeString,
-													Optional: true,
-												},
-												"prefix": {
-													Type:     schema.TypeString,
-													Optional: true,
-												},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
 			"tags": tagsSchema(),
 			"zookeeper_connect_string": {
 				Type:     schema.TypeString,
@@ -369,7 +274,6 @@ func resourceAwsMskClusterCreate(d *schema.ResourceData, meta interface{}) error
 		KafkaVersion:         aws.String(d.Get("kafka_version").(string)),
 		NumberOfBrokerNodes:  aws.Int64(int64(d.Get("number_of_broker_nodes").(int))),
 		OpenMonitoring:       expandMskOpenMonitoring(d.Get("open_monitoring").([]interface{})),
-		LoggingInfo:          expandMskLoggingInfo(d.Get("logging_info").([]interface{})),
 		Tags:                 keyvaluetags.New(d.Get("tags").(map[string]interface{})).IgnoreAws().KafkaTags(),
 	}
 
@@ -431,7 +335,6 @@ func waitForMskClusterCreation(conn *kafka.Kafka, arn string) error {
 
 func resourceAwsMskClusterRead(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).kafkaconn
-	ignoreTagsConfig := meta.(*AWSClient).IgnoreTagsConfig
 
 	out, err := conn.DescribeCluster(&kafka.DescribeClusterInput{
 		ClusterArn: aws.String(d.Id()),
@@ -456,7 +359,6 @@ func resourceAwsMskClusterRead(d *schema.ResourceData, meta interface{}) error {
 
 	d.Set("arn", aws.StringValue(cluster.ClusterArn))
 	d.Set("bootstrap_brokers", aws.StringValue(brokerOut.BootstrapBrokerString))
-	d.Set("bootstrap_brokers_sasl_scram", aws.StringValue(brokerOut.BootstrapBrokerStringSaslScram))
 	d.Set("bootstrap_brokers_tls", aws.StringValue(brokerOut.BootstrapBrokerStringTls))
 
 	if err := d.Set("broker_node_group_info", flattenMskBrokerNodeGroupInfo(cluster.BrokerNodeGroupInfo)); err != nil {
@@ -483,16 +385,12 @@ func resourceAwsMskClusterRead(d *schema.ResourceData, meta interface{}) error {
 	d.Set("kafka_version", aws.StringValue(cluster.CurrentBrokerSoftwareInfo.KafkaVersion))
 	d.Set("number_of_broker_nodes", aws.Int64Value(cluster.NumberOfBrokerNodes))
 
-	if err := d.Set("tags", keyvaluetags.KafkaKeyValueTags(cluster.Tags).IgnoreAws().IgnoreConfig(ignoreTagsConfig).Map()); err != nil {
+	if err := d.Set("tags", keyvaluetags.KafkaKeyValueTags(cluster.Tags).IgnoreAws().Map()); err != nil {
 		return fmt.Errorf("error setting tags: %s", err)
 	}
 
 	if err := d.Set("open_monitoring", flattenMskOpenMonitoring(cluster.OpenMonitoring)); err != nil {
 		return fmt.Errorf("error setting open_monitoring: %s", err)
-	}
-
-	if err := d.Set("logging_info", flattenMskLoggingInfo(cluster.LoggingInfo)); err != nil {
-		return fmt.Errorf("error setting logging_info: %s", err)
 	}
 
 	d.Set("zookeeper_connect_string", aws.StringValue(cluster.ZookeeperConnectString))
@@ -556,13 +454,12 @@ func resourceAwsMskClusterUpdate(d *schema.ResourceData, meta interface{}) error
 		}
 	}
 
-	if d.HasChanges("enhanced_monitoring", "open_monitoring", "logging_info") {
+	if d.HasChange("enhanced_monitoring") || d.HasChange("open_monitoring") {
 		input := &kafka.UpdateMonitoringInput{
 			ClusterArn:         aws.String(d.Id()),
 			CurrentVersion:     aws.String(d.Get("current_version").(string)),
 			EnhancedMonitoring: aws.String(d.Get("enhanced_monitoring").(string)),
 			OpenMonitoring:     expandMskOpenMonitoring(d.Get("open_monitoring").([]interface{})),
-			LoggingInfo:        expandMskLoggingInfo(d.Get("logging_info").([]interface{})),
 		}
 
 		output, err := conn.UpdateMonitoring(input)
@@ -582,7 +479,7 @@ func resourceAwsMskClusterUpdate(d *schema.ResourceData, meta interface{}) error
 		}
 	}
 
-	if d.HasChange("configuration_info") && !d.HasChange("kafka_version") {
+	if d.HasChange("configuration_info") {
 		input := &kafka.UpdateClusterConfigurationInput{
 			ClusterArn:        aws.String(d.Id()),
 			ConfigurationInfo: expandMskClusterConfigurationInfo(d.Get("configuration_info").([]interface{})),
@@ -603,34 +500,6 @@ func resourceAwsMskClusterUpdate(d *schema.ResourceData, meta interface{}) error
 
 		if err := waitForMskClusterOperation(conn, clusterOperationARN); err != nil {
 			return fmt.Errorf("error waiting for MSK Cluster (%s) operation (%s): %s", d.Id(), clusterOperationARN, err)
-		}
-	}
-
-	if d.HasChange("kafka_version") {
-		input := &kafka.UpdateClusterKafkaVersionInput{
-			ClusterArn:         aws.String(d.Id()),
-			CurrentVersion:     aws.String(d.Get("current_version").(string)),
-			TargetKafkaVersion: aws.String(d.Get("kafka_version").(string)),
-		}
-
-		if d.HasChange("configuration_info") {
-			input.ConfigurationInfo = expandMskClusterConfigurationInfo(d.Get("configuration_info").([]interface{}))
-		}
-
-		output, err := conn.UpdateClusterKafkaVersion(input)
-
-		if err != nil {
-			return fmt.Errorf("error updating MSK Cluster (%s) kafka version: %w", d.Id(), err)
-		}
-
-		if output == nil {
-			return fmt.Errorf("error updating MSK Cluster (%s) kafka version: empty response", d.Id())
-		}
-
-		clusterOperationARN := aws.StringValue(output.ClusterOperationArn)
-
-		if err := waitForMskClusterOperation(conn, clusterOperationARN); err != nil {
-			return fmt.Errorf("error waiting for MSK Cluster (%s) operation (%s): %w", d.Id(), clusterOperationARN, err)
 		}
 	}
 
@@ -676,8 +545,7 @@ func expandMskClusterClientAuthentication(l []interface{}) *kafka.ClientAuthenti
 	m := l[0].(map[string]interface{})
 
 	ca := &kafka.ClientAuthentication{
-		Sasl: expandMskClusterScram(m["sasl"].([]interface{})),
-		Tls:  expandMskClusterTls(m["tls"].([]interface{})),
+		Tls: expandMskClusterTls(m["tls"].([]interface{})),
 	}
 
 	return ca
@@ -731,25 +599,6 @@ func expandMskClusterEncryptionInTransit(l []interface{}) *kafka.EncryptionInTra
 	}
 
 	return eit
-}
-
-func expandMskClusterScram(l []interface{}) *kafka.Sasl {
-	if len(l) == 0 || l[0] == nil {
-		return nil
-	}
-
-	tfMap, ok := l[0].(map[string]interface{})
-	if !ok {
-		return nil
-	}
-
-	sasl := &kafka.Sasl{
-		Scram: &kafka.Scram{
-			Enabled: aws.Bool(tfMap["scram"].(bool)),
-		},
-	}
-
-	return sasl
 }
 
 func expandMskClusterTls(l []interface{}) *kafka.Tls {
@@ -823,82 +672,6 @@ func expandMskOpenMonitoringPrometheusNodeExporter(l []interface{}) *kafka.NodeE
 	return nodeExporter
 }
 
-func expandMskLoggingInfo(l []interface{}) *kafka.LoggingInfo {
-	if len(l) == 0 || l[0] == nil {
-		return nil
-	}
-
-	m := l[0].(map[string]interface{})
-
-	loggingInfo := &kafka.LoggingInfo{
-		BrokerLogs: expandMskLoggingInfoBrokerLogs(m["broker_logs"].([]interface{})),
-	}
-
-	return loggingInfo
-}
-
-func expandMskLoggingInfoBrokerLogs(l []interface{}) *kafka.BrokerLogs {
-	if len(l) == 0 || l[0] == nil {
-		return nil
-	}
-
-	m := l[0].(map[string]interface{})
-
-	brokerLogs := &kafka.BrokerLogs{
-		CloudWatchLogs: expandMskLoggingInfoBrokerLogsCloudWatchLogs(m["cloudwatch_logs"].([]interface{})),
-		Firehose:       expandMskLoggingInfoBrokerLogsFirehose(m["firehose"].([]interface{})),
-		S3:             expandMskLoggingInfoBrokerLogsS3(m["s3"].([]interface{})),
-	}
-
-	return brokerLogs
-}
-
-func expandMskLoggingInfoBrokerLogsCloudWatchLogs(l []interface{}) *kafka.CloudWatchLogs {
-	if len(l) == 0 || l[0] == nil {
-		return nil
-	}
-
-	m := l[0].(map[string]interface{})
-
-	cloudWatchLogs := &kafka.CloudWatchLogs{
-		Enabled:  aws.Bool(m["enabled"].(bool)),
-		LogGroup: aws.String(m["log_group"].(string)),
-	}
-
-	return cloudWatchLogs
-}
-
-func expandMskLoggingInfoBrokerLogsFirehose(l []interface{}) *kafka.Firehose {
-	if len(l) == 0 || l[0] == nil {
-		return nil
-	}
-
-	m := l[0].(map[string]interface{})
-
-	firehose := &kafka.Firehose{
-		Enabled:        aws.Bool(m["enabled"].(bool)),
-		DeliveryStream: aws.String(m["delivery_stream"].(string)),
-	}
-
-	return firehose
-}
-
-func expandMskLoggingInfoBrokerLogsS3(l []interface{}) *kafka.S3 {
-	if len(l) == 0 || l[0] == nil {
-		return nil
-	}
-
-	m := l[0].(map[string]interface{})
-
-	s3 := &kafka.S3{
-		Enabled: aws.Bool(m["enabled"].(bool)),
-		Bucket:  aws.String(m["bucket"].(string)),
-		Prefix:  aws.String(m["prefix"].(string)),
-	}
-
-	return s3
-}
-
 func flattenMskBrokerNodeGroupInfo(b *kafka.BrokerNodeGroupInfo) []map[string]interface{} {
 
 	if b == nil {
@@ -925,8 +698,7 @@ func flattenMskClientAuthentication(ca *kafka.ClientAuthentication) []map[string
 	}
 
 	m := map[string]interface{}{
-		"sasl": flattenMskSasl(ca.Sasl),
-		"tls":  flattenMskTls(ca.Tls),
+		"tls": flattenMskTls(ca.Tls),
 	}
 
 	return []map[string]interface{}{m}
@@ -969,26 +741,6 @@ func flattenMskEncryptionInTransit(eit *kafka.EncryptionInTransit) []map[string]
 	}
 
 	return []map[string]interface{}{m}
-}
-
-func flattenMskSasl(sasl *kafka.Sasl) []map[string]interface{} {
-	if sasl == nil {
-		return []map[string]interface{}{}
-	}
-
-	m := map[string]interface{}{
-		"scram": flattenMskScram(sasl.Scram),
-	}
-
-	return []map[string]interface{}{m}
-}
-
-func flattenMskScram(scram *kafka.Scram) bool {
-	if scram == nil {
-		return false
-	}
-
-	return aws.BoolValue(scram.Enabled)
 }
 
 func flattenMskTls(tls *kafka.Tls) []map[string]interface{} {
@@ -1047,72 +799,6 @@ func flattenMskOpenMonitoringPrometheusNodeExporter(e *kafka.NodeExporter) []map
 
 	m := map[string]interface{}{
 		"enabled_in_broker": aws.BoolValue(e.EnabledInBroker),
-	}
-
-	return []map[string]interface{}{m}
-}
-
-func flattenMskLoggingInfo(e *kafka.LoggingInfo) []map[string]interface{} {
-	if e == nil {
-		return []map[string]interface{}{}
-	}
-
-	m := map[string]interface{}{
-		"broker_logs": flattenMskLoggingInfoBrokerLogs(e.BrokerLogs),
-	}
-
-	return []map[string]interface{}{m}
-}
-
-func flattenMskLoggingInfoBrokerLogs(e *kafka.BrokerLogs) []map[string]interface{} {
-	if e == nil {
-		return []map[string]interface{}{}
-	}
-
-	m := map[string]interface{}{
-		"cloudwatch_logs": flattenMskLoggingInfoBrokerLogsCloudWatchLogs(e.CloudWatchLogs),
-		"firehose":        flattenMskLoggingInfoBrokerLogsFirehose(e.Firehose),
-		"s3":              flattenMskLoggingInfoBrokerLogsS3(e.S3),
-	}
-
-	return []map[string]interface{}{m}
-}
-
-func flattenMskLoggingInfoBrokerLogsCloudWatchLogs(e *kafka.CloudWatchLogs) []map[string]interface{} {
-	if e == nil {
-		return []map[string]interface{}{}
-	}
-
-	m := map[string]interface{}{
-		"enabled":   aws.BoolValue(e.Enabled),
-		"log_group": aws.StringValue(e.LogGroup),
-	}
-
-	return []map[string]interface{}{m}
-}
-
-func flattenMskLoggingInfoBrokerLogsFirehose(e *kafka.Firehose) []map[string]interface{} {
-	if e == nil {
-		return []map[string]interface{}{}
-	}
-
-	m := map[string]interface{}{
-		"enabled":         aws.BoolValue(e.Enabled),
-		"delivery_stream": aws.StringValue(e.DeliveryStream),
-	}
-
-	return []map[string]interface{}{m}
-}
-
-func flattenMskLoggingInfoBrokerLogsS3(e *kafka.S3) []map[string]interface{} {
-	if e == nil {
-		return []map[string]interface{}{}
-	}
-
-	m := map[string]interface{}{
-		"enabled": aws.BoolValue(e.Enabled),
-		"bucket":  aws.StringValue(e.Bucket),
-		"prefix":  aws.StringValue(e.Prefix),
 	}
 
 	return []map[string]interface{}{m}
@@ -1198,7 +884,7 @@ func waitForMskClusterOperation(conn *kafka.Kafka, clusterOperationARN string) e
 		Pending: []string{"PENDING", "UPDATE_IN_PROGRESS"},
 		Target:  []string{"UPDATE_COMPLETE"},
 		Refresh: mskClusterOperationRefreshFunc(conn, clusterOperationARN),
-		Timeout: 2 * time.Hour,
+		Timeout: 60 * time.Minute,
 	}
 
 	log.Printf("[DEBUG] Waiting for MSK Cluster Operation (%s) completion", clusterOperationARN)

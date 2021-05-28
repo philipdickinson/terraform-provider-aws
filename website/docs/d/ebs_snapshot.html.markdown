@@ -50,7 +50,6 @@ several valid keys, for a full reference, check out
 
 In addition to all arguments above, the following attributes are exported:
 
-* `arn` - Amazon Resource Name (ARN) of the EBS Snapshot.
 * `id` - The snapshot ID (e.g. snap-59fcb34e).
 * `snapshot_id` - The snapshot ID (e.g. snap-59fcb34e).
 * `description` - A description for the snapshot
@@ -62,6 +61,6 @@ In addition to all arguments above, the following attributes are exported:
 * `kms_key_id` - The ARN for the KMS encryption key.
 * `data_encryption_key_id` - The data encryption key identifier for the snapshot.
 * `state` - The snapshot state.
-* `tags` - A map of tags for the resource.
+* `tags` - A mapping of tags for the resource.
 
 [1]: http://docs.aws.amazon.com/cli/latest/reference/ec2/describe-snapshots.html

@@ -10,9 +10,9 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/aws/aws-sdk-go/service/redshift"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 	"github.com/terraform-providers/terraform-provider-aws/aws/internal/keyvaluetags"
 )
 
@@ -28,7 +28,7 @@ func resourceAwsRedshiftCluster() *schema.Resource {
 
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(75 * time.Minute),
-			Update: schema.DefaultTimeout(75 * time.Minute),
+			Update: schema.DefaultTimeout(40 * time.Minute),
 			Delete: schema.DefaultTimeout(40 * time.Minute),
 		},
 
@@ -39,26 +39,17 @@ func resourceAwsRedshiftCluster() *schema.Resource {
 			},
 
 			"database_name": {
-				Type:     schema.TypeString,
-				Optional: true,
-				Computed: true,
-				ValidateFunc: validation.All(
-					validation.StringLenBetween(1, 64),
-					validation.StringMatch(regexp.MustCompile(`^[0-9a-z_$]+$`), "must contain only lowercase alphanumeric characters, underscores, and dollar signs"),
-					validation.StringMatch(regexp.MustCompile(`(?i)^[a-z_]`), "first character must be a letter or underscore"),
-				),
+				Type:         schema.TypeString,
+				Optional:     true,
+				Computed:     true,
+				ValidateFunc: validateRedshiftClusterDbName,
 			},
 
 			"cluster_identifier": {
-				Type:     schema.TypeString,
-				Required: true,
-				ForceNew: true,
-				ValidateFunc: validation.All(
-					validation.StringMatch(regexp.MustCompile(`^[0-9a-z-]+$`), "must contain only lowercase alphanumeric characters and hyphens"),
-					validation.StringMatch(regexp.MustCompile(`(?i)^[a-z]`), "first character must be a letter"),
-					validation.StringDoesNotMatch(regexp.MustCompile(`--`), "cannot contain two consecutive hyphens"),
-					validation.StringDoesNotMatch(regexp.MustCompile(`-$`), "cannot end with a hyphen"),
-				),
+				Type:         schema.TypeString,
+				Required:     true,
+				ForceNew:     true,
+				ValidateFunc: validateRedshiftClusterIdentifier,
 			},
 			"cluster_type": {
 				Type:     schema.TypeString,
@@ -72,27 +63,17 @@ func resourceAwsRedshiftCluster() *schema.Resource {
 			},
 
 			"master_username": {
-				Type:     schema.TypeString,
-				Optional: true,
-				ForceNew: true,
-				ValidateFunc: validation.All(
-					validation.StringLenBetween(1, 128),
-					validation.StringMatch(regexp.MustCompile(`^\w+$`), "must contain only alphanumeric characters"),
-					validation.StringMatch(regexp.MustCompile(`(?i)^[a-z_]`), "first character must be a letter"),
-				),
+				Type:         schema.TypeString,
+				Optional:     true,
+				ForceNew:     true,
+				ValidateFunc: validateRedshiftClusterMasterUsername,
 			},
 
 			"master_password": {
-				Type:      schema.TypeString,
-				Optional:  true,
-				Sensitive: true,
-				ValidateFunc: validation.All(
-					validation.StringLenBetween(8, 64),
-					validation.StringMatch(regexp.MustCompile(`^.*[a-z].*`), "must contain at least one lowercase letter"),
-					validation.StringMatch(regexp.MustCompile(`^.*[A-Z].*`), "must contain at least one uppercase letter"),
-					validation.StringMatch(regexp.MustCompile(`^.*[0-9].*`), "must contain at least one number"),
-					validation.StringMatch(regexp.MustCompile(`^[^\@\/'" ]*$`), "cannot contain [/@\"' ]"),
-				),
+				Type:         schema.TypeString,
+				Optional:     true,
+				Sensitive:    true,
+				ValidateFunc: validateRedshiftClusterMasterPassword,
 			},
 
 			"cluster_security_groups": {
@@ -206,14 +187,9 @@ func resourceAwsRedshiftCluster() *schema.Resource {
 			},
 
 			"final_snapshot_identifier": {
-				Type:     schema.TypeString,
-				Optional: true,
-				ValidateFunc: validation.All(
-					validation.StringLenBetween(1, 255),
-					validation.StringMatch(regexp.MustCompile(`^[0-9A-Za-z-]+$`), "must only contain alphanumeric characters and hyphens"),
-					validation.StringDoesNotMatch(regexp.MustCompile(`--`), "cannot contain two consecutive hyphens"),
-					validation.StringDoesNotMatch(regexp.MustCompile(`-$`), "cannot end in a hyphen"),
-				),
+				Type:         schema.TypeString,
+				Optional:     true,
+				ValidateFunc: validateRedshiftClusterFinalSnapshotIdentifier,
 			},
 
 			"skip_final_snapshot": {
@@ -303,6 +279,27 @@ func resourceAwsRedshiftCluster() *schema.Resource {
 				},
 			},
 
+			"enable_logging": {
+				Type:     schema.TypeBool,
+				Optional: true,
+				Computed: true,
+				Removed:  "Use `logging` configuration block `enable` argument instead",
+			},
+
+			"bucket_name": {
+				Type:     schema.TypeString,
+				Optional: true,
+				Computed: true,
+				Removed:  "Use `logging` configuration block `bucket_name` argument instead",
+			},
+
+			"s3_key_prefix": {
+				Type:     schema.TypeString,
+				Optional: true,
+				Computed: true,
+				Removed:  "Use `logging` configuration block `s3_key_prefix` argument instead",
+			},
+
 			"snapshot_identifier": {
 				Type:     schema.TypeString,
 				Optional: true,
@@ -370,11 +367,11 @@ func resourceAwsRedshiftClusterCreate(d *schema.ResourceData, meta interface{}) 
 		}
 
 		if v := d.Get("cluster_security_groups").(*schema.Set); v.Len() > 0 {
-			restoreOpts.ClusterSecurityGroups = expandStringSet(v)
+			restoreOpts.ClusterSecurityGroups = expandStringList(v.List())
 		}
 
 		if v := d.Get("vpc_security_group_ids").(*schema.Set); v.Len() > 0 {
-			restoreOpts.VpcSecurityGroupIds = expandStringSet(v)
+			restoreOpts.VpcSecurityGroupIds = expandStringList(v.List())
 		}
 
 		if v, ok := d.GetOk("preferred_maintenance_window"); ok {
@@ -394,7 +391,7 @@ func resourceAwsRedshiftClusterCreate(d *schema.ResourceData, meta interface{}) 
 		}
 
 		if v, ok := d.GetOk("iam_roles"); ok {
-			restoreOpts.IamRoles = expandStringSet(v.(*schema.Set))
+			restoreOpts.IamRoles = expandStringList(v.(*schema.Set).List())
 		}
 
 		log.Printf("[DEBUG] Redshift Cluster restore cluster options: %s", restoreOpts)
@@ -405,7 +402,7 @@ func resourceAwsRedshiftClusterCreate(d *schema.ResourceData, meta interface{}) 
 			return err
 		}
 
-		d.SetId(aws.StringValue(resp.Cluster.ClusterIdentifier))
+		d.SetId(*resp.Cluster.ClusterIdentifier)
 
 	} else {
 		if _, ok := d.GetOk("master_password"); !ok {
@@ -438,11 +435,11 @@ func resourceAwsRedshiftClusterCreate(d *schema.ResourceData, meta interface{}) 
 		}
 
 		if v := d.Get("cluster_security_groups").(*schema.Set); v.Len() > 0 {
-			createOpts.ClusterSecurityGroups = expandStringSet(v)
+			createOpts.ClusterSecurityGroups = expandStringList(v.List())
 		}
 
 		if v := d.Get("vpc_security_group_ids").(*schema.Set); v.Len() > 0 {
-			createOpts.VpcSecurityGroupIds = expandStringSet(v)
+			createOpts.VpcSecurityGroupIds = expandStringList(v.List())
 		}
 
 		if v, ok := d.GetOk("cluster_subnet_group_name"); ok {
@@ -478,7 +475,7 @@ func resourceAwsRedshiftClusterCreate(d *schema.ResourceData, meta interface{}) 
 		}
 
 		if v, ok := d.GetOk("iam_roles"); ok {
-			createOpts.IamRoles = expandStringSet(v.(*schema.Set))
+			createOpts.IamRoles = expandStringList(v.(*schema.Set).List())
 		}
 
 		log.Printf("[DEBUG] Redshift Cluster create options: %s", createOpts)
@@ -489,7 +486,7 @@ func resourceAwsRedshiftClusterCreate(d *schema.ResourceData, meta interface{}) 
 		}
 
 		log.Printf("[DEBUG]: Cluster create response: %s", resp)
-		d.SetId(aws.StringValue(resp.Cluster.ClusterIdentifier))
+		d.SetId(*resp.Cluster.ClusterIdentifier)
 	}
 
 	stateConf := &resource.StateChangeConf{
@@ -512,7 +509,7 @@ func resourceAwsRedshiftClusterCreate(d *schema.ResourceData, meta interface{}) 
 		}
 	}
 
-	if _, ok := d.GetOk("logging.0.enable"); ok {
+	if logging, ok := d.GetOk("logging.0.enable"); ok && logging.(bool) {
 		if err := enableRedshiftClusterLogging(d, conn); err != nil {
 			return fmt.Errorf("error enabling Redshift Cluster (%s) logging: %s", d.Id(), err)
 		}
@@ -523,7 +520,6 @@ func resourceAwsRedshiftClusterCreate(d *schema.ResourceData, meta interface{}) 
 
 func resourceAwsRedshiftClusterRead(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).redshiftconn
-	ignoreTagsConfig := meta.(*AWSClient).IgnoreTagsConfig
 
 	log.Printf("[INFO] Reading Redshift Cluster Information: %s", d.Id())
 	resp, err := conn.DescribeClusters(&redshift.DescribeClustersInput{
@@ -620,7 +616,7 @@ func resourceAwsRedshiftClusterRead(d *schema.ResourceData, meta interface{}) er
 
 	d.Set("cluster_public_key", rsc.ClusterPublicKey)
 	d.Set("cluster_revision_number", rsc.ClusterRevisionNumber)
-	if err := d.Set("tags", keyvaluetags.RedshiftKeyValueTags(rsc.Tags).IgnoreAws().IgnoreConfig(ignoreTagsConfig).Map()); err != nil {
+	if err := d.Set("tags", keyvaluetags.RedshiftKeyValueTags(rsc.Tags).IgnoreAws().Map()); err != nil {
 		return fmt.Errorf("error setting tags: %s", err)
 	}
 
@@ -645,6 +641,7 @@ func resourceAwsRedshiftClusterRead(d *schema.ResourceData, meta interface{}) er
 
 func resourceAwsRedshiftClusterUpdate(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).redshiftconn
+	d.Partial(true)
 
 	if d.HasChange("tags") {
 		o, n := d.GetChange("tags")
@@ -652,6 +649,8 @@ func resourceAwsRedshiftClusterUpdate(d *schema.ResourceData, meta interface{}) 
 		if err := keyvaluetags.RedshiftUpdateTags(conn, d.Get("arn").(string), o, n); err != nil {
 			return fmt.Errorf("error updating Redshift Cluster (%s) tags: %s", d.Get("arn").(string), err)
 		}
+
+		d.SetPartial("tags")
 	}
 
 	requestUpdate := false
@@ -662,7 +661,7 @@ func resourceAwsRedshiftClusterUpdate(d *schema.ResourceData, meta interface{}) 
 
 	// If the cluster type, node type, or number of nodes changed, then the AWS API expects all three
 	// items to be sent over
-	if d.HasChanges("cluster_type", "node_type", "number_of_nodes") {
+	if d.HasChange("cluster_type") || d.HasChange("node_type") || d.HasChange("number_of_nodes") {
 		req.ClusterType = aws.String(d.Get("cluster_type").(string))
 		req.NodeType = aws.String(d.Get("node_type").(string))
 		if v := d.Get("number_of_nodes").(int); v > 1 {
@@ -675,12 +674,12 @@ func resourceAwsRedshiftClusterUpdate(d *schema.ResourceData, meta interface{}) 
 	}
 
 	if d.HasChange("cluster_security_groups") {
-		req.ClusterSecurityGroups = expandStringSet(d.Get("cluster_security_groups").(*schema.Set))
+		req.ClusterSecurityGroups = expandStringList(d.Get("cluster_security_groups").(*schema.Set).List())
 		requestUpdate = true
 	}
 
 	if d.HasChange("vpc_security_group_ids") {
-		req.VpcSecurityGroupIds = expandStringSet(d.Get("vpc_security_group_ids").(*schema.Set))
+		req.VpcSecurityGroupIds = expandStringList(d.Get("vpc_security_group_ids").(*schema.Set).List())
 		requestUpdate = true
 	}
 
@@ -755,14 +754,14 @@ func resourceAwsRedshiftClusterUpdate(d *schema.ResourceData, meta interface{}) 
 		os := o.(*schema.Set)
 		ns := n.(*schema.Set)
 
-		removeIams := os.Difference(ns)
-		addIams := ns.Difference(os)
+		removeIams := os.Difference(ns).List()
+		addIams := ns.Difference(os).List()
 
 		log.Printf("[INFO] Building Redshift Modify Cluster IAM Role Options")
 		req := &redshift.ModifyClusterIamRolesInput{
 			ClusterIdentifier: aws.String(d.Id()),
-			AddIamRoles:       expandStringSet(addIams),
-			RemoveIamRoles:    expandStringSet(removeIams),
+			AddIamRoles:       expandStringList(addIams),
+			RemoveIamRoles:    expandStringList(removeIams),
 		}
 
 		log.Printf("[INFO] Modifying Redshift Cluster IAM Roles: %s", d.Id())
@@ -771,6 +770,8 @@ func resourceAwsRedshiftClusterUpdate(d *schema.ResourceData, meta interface{}) 
 		if err != nil {
 			return fmt.Errorf("Error modifying Redshift Cluster IAM Roles (%s): %s", d.Id(), err)
 		}
+
+		d.SetPartial("iam_roles")
 	}
 
 	if requestUpdate || d.HasChange("iam_roles") {
@@ -823,6 +824,8 @@ func resourceAwsRedshiftClusterUpdate(d *schema.ResourceData, meta interface{}) 
 			}
 		}
 	}
+
+	d.Partial(false)
 
 	return resourceAwsRedshiftClusterRead(d, meta)
 }
@@ -910,10 +913,7 @@ func deleteAwsRedshiftCluster(opts *redshift.DeleteClusterInput, conn *redshift.
 			return resource.RetryableError(err)
 		}
 
-		if err != nil {
-			return resource.NonRetryableError(err)
-		}
-		return nil
+		return resource.NonRetryableError(err)
 	})
 	if isResourceTimeoutError(err) {
 		_, err = conn.DeleteCluster(opts)
@@ -968,4 +968,105 @@ func resourceAwsRedshiftClusterStateRefreshFunc(id string, conn *redshift.Redshi
 
 		return rsc, *rsc.ClusterStatus, nil
 	}
+}
+
+func validateRedshiftClusterIdentifier(v interface{}, k string) (ws []string, errors []error) {
+	value := v.(string)
+	if !regexp.MustCompile(`^[0-9a-z-]+$`).MatchString(value) {
+		errors = append(errors, fmt.Errorf(
+			"only lowercase alphanumeric characters and hyphens allowed in %q", k))
+	}
+	if !regexp.MustCompile(`^[a-z]`).MatchString(value) {
+		errors = append(errors, fmt.Errorf(
+			"first character of %q must be a letter", k))
+	}
+	if regexp.MustCompile(`--`).MatchString(value) {
+		errors = append(errors, fmt.Errorf(
+			"%q cannot contain two consecutive hyphens", k))
+	}
+	if regexp.MustCompile(`-$`).MatchString(value) {
+		errors = append(errors, fmt.Errorf(
+			"%q cannot end with a hyphen", k))
+	}
+	return
+}
+
+func validateRedshiftClusterDbName(v interface{}, k string) (ws []string, errors []error) {
+	value := v.(string)
+	if !regexp.MustCompile(`^[0-9a-z_$]+$`).MatchString(value) {
+		errors = append(errors, fmt.Errorf(
+			"only lowercase alphanumeric characters, underscores, and dollar signs are allowed in %q", k))
+	}
+	if !regexp.MustCompile(`^[a-zA-Z_]`).MatchString(value) {
+		errors = append(errors, fmt.Errorf(
+			"first character of %q must be a letter or underscore", k))
+	}
+	if len(value) > 64 {
+		errors = append(errors, fmt.Errorf(
+			"%q cannot be longer than 64 characters: %q", k, value))
+	}
+	if value == "" {
+		errors = append(errors, fmt.Errorf(
+			"%q cannot be an empty string", k))
+	}
+
+	return
+}
+
+func validateRedshiftClusterFinalSnapshotIdentifier(v interface{}, k string) (ws []string, errors []error) {
+	value := v.(string)
+	if !regexp.MustCompile(`^[0-9A-Za-z-]+$`).MatchString(value) {
+		errors = append(errors, fmt.Errorf(
+			"only alphanumeric characters and hyphens allowed in %q", k))
+	}
+	if regexp.MustCompile(`--`).MatchString(value) {
+		errors = append(errors, fmt.Errorf("%q cannot contain two consecutive hyphens", k))
+	}
+	if regexp.MustCompile(`-$`).MatchString(value) {
+		errors = append(errors, fmt.Errorf("%q cannot end in a hyphen", k))
+	}
+	if len(value) > 255 {
+		errors = append(errors, fmt.Errorf("%q cannot be more than 255 characters", k))
+	}
+	return
+}
+
+func validateRedshiftClusterMasterUsername(v interface{}, k string) (ws []string, errors []error) {
+	value := v.(string)
+	if !regexp.MustCompile(`^\w+$`).MatchString(value) {
+		errors = append(errors, fmt.Errorf(
+			"only alphanumeric characters in %q", k))
+	}
+	if !regexp.MustCompile(`^[A-Za-z]`).MatchString(value) {
+		errors = append(errors, fmt.Errorf(
+			"first character of %q must be a letter", k))
+	}
+	if len(value) > 128 {
+		errors = append(errors, fmt.Errorf("%q cannot be more than 128 characters", k))
+	}
+	return
+}
+
+func validateRedshiftClusterMasterPassword(v interface{}, k string) (ws []string, errors []error) {
+	value := v.(string)
+	if !regexp.MustCompile(`^.*[a-z].*`).MatchString(value) {
+		errors = append(errors, fmt.Errorf(
+			"%q must contain at least one lowercase letter", k))
+	}
+	if !regexp.MustCompile(`^.*[A-Z].*`).MatchString(value) {
+		errors = append(errors, fmt.Errorf(
+			"%q must contain at least one uppercase letter", k))
+	}
+	if !regexp.MustCompile(`^.*[0-9].*`).MatchString(value) {
+		errors = append(errors, fmt.Errorf(
+			"%q must contain at least one number", k))
+	}
+	if !regexp.MustCompile(`^[^\@\/'" ]*$`).MatchString(value) {
+		errors = append(errors, fmt.Errorf(
+			"%q cannot contain [/@\"' ]", k))
+	}
+	if len(value) < 8 {
+		errors = append(errors, fmt.Errorf("%q must be at least 8 characters", k))
+	}
+	return
 }

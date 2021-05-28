@@ -8,25 +8,24 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/lightsail"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccAWSLightsailDomain_basic(t *testing.T) {
 	var domain lightsail.Domain
 	lightsailDomainName := fmt.Sprintf("tf-test-lightsail-%s.com", acctest.RandString(5))
-	resourceName := "aws_lightsail_domain.test"
 
 	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t); testAccPreCheckLightsailDomain(t) },
-		ProviderFactories: testAccProviderFactories,
-		CheckDestroy:      testAccCheckAWSLightsailDomainDestroy,
+		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckAWSLightsail(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckAWSLightsailDomainDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccAWSLightsailDomainConfig_basic(lightsailDomainName),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckAWSLightsailDomainExists(resourceName, &domain),
+					testAccCheckAWSLightsailDomainExists("aws_lightsail_domain.domain_test", &domain),
 				),
 			},
 		},
@@ -36,18 +35,31 @@ func TestAccAWSLightsailDomain_basic(t *testing.T) {
 func TestAccAWSLightsailDomain_disappears(t *testing.T) {
 	var domain lightsail.Domain
 	lightsailDomainName := fmt.Sprintf("tf-test-lightsail-%s.com", acctest.RandString(5))
-	resourceName := "aws_lightsail_domain.test"
+
+	domainDestroy := func(*terraform.State) error {
+
+		conn := testAccProvider.Meta().(*AWSClient).lightsailconn
+		_, err := conn.DeleteDomain(&lightsail.DeleteDomainInput{
+			DomainName: aws.String(lightsailDomainName),
+		})
+
+		if err != nil {
+			return fmt.Errorf("Error deleting Lightsail Domain in disapear test")
+		}
+
+		return nil
+	}
 
 	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t); testAccPreCheckLightsailDomain(t) },
-		ProviderFactories: testAccProviderFactories,
-		CheckDestroy:      testAccCheckAWSLightsailDomainDestroy,
+		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckAWSLightsail(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckAWSLightsailDomainDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccAWSLightsailDomainConfig_basic(lightsailDomainName),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckAWSLightsailDomainExists(resourceName, &domain),
-					testAccCheckResourceDisappears(testAccProviderLightsailDomain, resourceAwsLightsailDomain(), resourceName),
+					testAccCheckAWSLightsailDomainExists("aws_lightsail_domain.domain_test", &domain),
+					domainDestroy,
 				),
 				ExpectNonEmptyPlan: true,
 			},
@@ -66,7 +78,7 @@ func testAccCheckAWSLightsailDomainExists(n string, domain *lightsail.Domain) re
 			return errors.New("No Lightsail Domain ID is set")
 		}
 
-		conn := testAccProviderLightsailDomain.Meta().(*AWSClient).lightsailconn
+		conn := testAccProvider.Meta().(*AWSClient).lightsailconn
 
 		resp, err := conn.GetDomain(&lightsail.GetDomainInput{
 			DomainName: aws.String(rs.Primary.ID),
@@ -85,12 +97,13 @@ func testAccCheckAWSLightsailDomainExists(n string, domain *lightsail.Domain) re
 }
 
 func testAccCheckAWSLightsailDomainDestroy(s *terraform.State) error {
+
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "aws_lightsail_domain" {
 			continue
 		}
 
-		conn := testAccProviderLightsailDomain.Meta().(*AWSClient).lightsailconn
+		conn := testAccProvider.Meta().(*AWSClient).lightsailconn
 
 		resp, err := conn.GetDomain(&lightsail.GetDomainInput{
 			DomainName: aws.String(rs.Primary.ID),
@@ -115,11 +128,13 @@ func testAccCheckAWSLightsailDomainDestroy(s *terraform.State) error {
 }
 
 func testAccAWSLightsailDomainConfig_basic(lightsailDomainName string) string {
-	return composeConfig(
-		testAccLightsailDomainRegionProviderConfig(),
-		fmt.Sprintf(`
-resource "aws_lightsail_domain" "test" {
+	return fmt.Sprintf(`
+provider "aws" {
+  region = "us-east-1"
+}
+
+resource "aws_lightsail_domain" "domain_test" {
   domain_name = "%s"
 }
-`, lightsailDomainName))
+`, lightsailDomainName)
 }

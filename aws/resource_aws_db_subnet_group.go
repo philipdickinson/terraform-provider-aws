@@ -9,8 +9,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/rds"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/terraform-providers/terraform-provider-aws/aws/internal/keyvaluetags"
 )
 
@@ -97,14 +97,13 @@ func resourceAwsDbSubnetGroupCreate(d *schema.ResourceData, meta interface{}) er
 		return fmt.Errorf("Error creating DB Subnet Group: %s", err)
 	}
 
-	d.SetId(aws.StringValue(createOpts.DBSubnetGroupName))
+	d.SetId(*createOpts.DBSubnetGroupName)
 	log.Printf("[INFO] DB Subnet Group ID: %s", d.Id())
 	return resourceAwsDbSubnetGroupRead(d, meta)
 }
 
 func resourceAwsDbSubnetGroupRead(d *schema.ResourceData, meta interface{}) error {
 	rdsconn := meta.(*AWSClient).rdsconn
-	ignoreTagsConfig := meta.(*AWSClient).IgnoreTagsConfig
 
 	describeOpts := rds.DescribeDBSubnetGroupsInput{
 		DBSubnetGroupName: aws.String(d.Id()),
@@ -158,7 +157,7 @@ func resourceAwsDbSubnetGroupRead(d *schema.ResourceData, meta interface{}) erro
 		return fmt.Errorf("error listing tags for RDS DB Subnet Group (%s): %s", d.Get("arn").(string), err)
 	}
 
-	if err := d.Set("tags", tags.IgnoreAws().IgnoreConfig(ignoreTagsConfig).Map()); err != nil {
+	if err := d.Set("tags", tags.IgnoreAws().Map()); err != nil {
 		return fmt.Errorf("error setting tags: %s", err)
 	}
 
@@ -167,7 +166,7 @@ func resourceAwsDbSubnetGroupRead(d *schema.ResourceData, meta interface{}) erro
 
 func resourceAwsDbSubnetGroupUpdate(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).rdsconn
-	if d.HasChanges("subnet_ids", "description") {
+	if d.HasChange("subnet_ids") || d.HasChange("description") {
 		_, n := d.GetChange("subnet_ids")
 		if n == nil {
 			n = new(schema.Set)
@@ -196,6 +195,8 @@ func resourceAwsDbSubnetGroupUpdate(d *schema.ResourceData, meta interface{}) er
 		if err := keyvaluetags.RdsUpdateTags(conn, d.Get("arn").(string), o, n); err != nil {
 			return fmt.Errorf("error updating RDS DB Subnet Group (%s) tags: %s", d.Get("arn").(string), err)
 		}
+
+		d.SetPartial("tags")
 	}
 
 	return resourceAwsDbSubnetGroupRead(d, meta)

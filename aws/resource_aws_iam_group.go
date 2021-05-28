@@ -7,8 +7,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 func resourceAwsIamGroup() *schema.Resource {
@@ -31,12 +31,9 @@ func resourceAwsIamGroup() *schema.Resource {
 				Computed: true,
 			},
 			"name": {
-				Type:     schema.TypeString,
-				Required: true,
-				ValidateFunc: validation.StringMatch(
-					regexp.MustCompile(`^[0-9A-Za-z=,.@\-_+]+$`),
-					"must only contain alphanumeric characters, hyphens, underscores, commas, periods, @ symbols, plus and equals signs",
-				),
+				Type:         schema.TypeString,
+				Required:     true,
+				ValidateFunc: validateAwsIamGroupName,
 			},
 			"path": {
 				Type:     schema.TypeString,
@@ -61,7 +58,7 @@ func resourceAwsIamGroupCreate(d *schema.ResourceData, meta interface{}) error {
 	if err != nil {
 		return fmt.Errorf("Error creating IAM Group %s: %s", name, err)
 	}
-	d.SetId(aws.StringValue(createResp.Group.GroupName))
+	d.SetId(*createResp.Group.GroupName)
 
 	return resourceAwsIamGroupReadResult(d, createResp.Group)
 }
@@ -101,7 +98,7 @@ func resourceAwsIamGroupReadResult(d *schema.ResourceData, group *iam.Group) err
 }
 
 func resourceAwsIamGroupUpdate(d *schema.ResourceData, meta interface{}) error {
-	if d.HasChanges("name", "path") {
+	if d.HasChange("name") || d.HasChange("path") {
 		iamconn := meta.(*AWSClient).iamconn
 		on, nn := d.GetChange("name")
 		_, np := d.GetChange("path")
@@ -134,81 +131,12 @@ func resourceAwsIamGroupDelete(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-func deleteAwsIamGroupPolicyAttachments(conn *iam.IAM, groupName string) error {
-	var attachedPolicies []*iam.AttachedPolicy
-	input := &iam.ListAttachedGroupPoliciesInput{
-		GroupName: aws.String(groupName),
+func validateAwsIamGroupName(v interface{}, k string) (ws []string, errors []error) {
+	value := v.(string)
+	if !regexp.MustCompile(`^[0-9A-Za-z=,.@\-_+]+$`).MatchString(value) {
+		errors = append(errors, fmt.Errorf(
+			"only alphanumeric characters, hyphens, underscores, commas, periods, @ symbols, plus and equals signs allowed in %q: %q",
+			k, value))
 	}
-
-	err := conn.ListAttachedGroupPoliciesPages(input, func(page *iam.ListAttachedGroupPoliciesOutput, lastPage bool) bool {
-		attachedPolicies = append(attachedPolicies, page.AttachedPolicies...)
-
-		return !lastPage
-	})
-
-	if isAWSErr(err, iam.ErrCodeNoSuchEntityException, "") {
-		return nil
-	}
-
-	if err != nil {
-		return fmt.Errorf("error listing IAM Group (%s) policy attachments for deletion: %w", groupName, err)
-	}
-
-	for _, attachedPolicy := range attachedPolicies {
-		input := &iam.DetachGroupPolicyInput{
-			GroupName: aws.String(groupName),
-			PolicyArn: attachedPolicy.PolicyArn,
-		}
-
-		_, err := conn.DetachGroupPolicy(input)
-
-		if isAWSErr(err, iam.ErrCodeNoSuchEntityException, "") {
-			continue
-		}
-
-		if err != nil {
-			return fmt.Errorf("error detaching IAM Group (%s) policy (%s): %w", groupName, aws.StringValue(attachedPolicy.PolicyArn), err)
-		}
-	}
-
-	return nil
-}
-
-func deleteAwsIamGroupPolicies(conn *iam.IAM, groupName string) error {
-	var inlinePolicies []*string
-	input := &iam.ListGroupPoliciesInput{
-		GroupName: aws.String(groupName),
-	}
-
-	err := conn.ListGroupPoliciesPages(input, func(page *iam.ListGroupPoliciesOutput, lastPage bool) bool {
-		inlinePolicies = append(inlinePolicies, page.PolicyNames...)
-		return !lastPage
-	})
-
-	if isAWSErr(err, iam.ErrCodeNoSuchEntityException, "") {
-		return nil
-	}
-
-	if err != nil {
-		return fmt.Errorf("error listing IAM Group (%s) inline policies for deletion: %w", groupName, err)
-	}
-
-	for _, policyName := range inlinePolicies {
-		input := &iam.DeleteGroupPolicyInput{
-			GroupName:  aws.String(groupName),
-			PolicyName: policyName,
-		}
-
-		_, err := conn.DeleteGroupPolicy(input)
-
-		if isAWSErr(err, iam.ErrCodeNoSuchEntityException, "") {
-			continue
-		}
-
-		if err != nil {
-			return fmt.Errorf("error deleting IAM Group (%s) inline policy (%s): %w", groupName, aws.StringValue(policyName), err)
-		}
-	}
-
-	return nil
+	return
 }

@@ -9,5 +9,6 @@ in the official AWS docs.
 ## How to run the example
 
 ```
-terraform apply -var=aws_region=us-west-2
+terraform apply \
+	-var=aws_region=us-west-2
 ```

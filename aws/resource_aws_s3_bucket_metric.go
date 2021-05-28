@@ -8,8 +8,8 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/terraform-providers/terraform-provider-aws/aws/internal/keyvaluetags"
 )
 
@@ -36,16 +36,10 @@ func resourceAwsS3BucketMetric() *schema.Resource {
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"prefix": {
-							Type:         schema.TypeString,
-							Optional:     true,
-							AtLeastOneOf: filterAtLeastOneOfKeys,
+							Type:     schema.TypeString,
+							Optional: true,
 						},
-						"tags": {
-							Type:         schema.TypeMap,
-							Optional:     true,
-							Elem:         &schema.Schema{Type: schema.TypeString},
-							AtLeastOneOf: filterAtLeastOneOfKeys,
-						},
+						"tags": tagsSchema(),
 					},
 				},
 			},

@@ -9,9 +9,9 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccAWSIAMRolePolicy_basic(t *testing.T) {
@@ -323,24 +323,9 @@ func testAccCheckAWSIAMRolePolicyNameMatches(i, j *iam.GetRolePolicyOutput) reso
 func testAccAwsIamRolePolicyConfig(suffix string) string {
 	return fmt.Sprintf(`
 resource "aws_iam_role" "role_%[1]s" {
-  name = "tf_test_role_test_%[1]s"
-  path = "/"
-
-  assume_role_policy = <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "",
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "ec2.amazonaws.com"
-      },
-      "Action": "sts:AssumeRole"
-    }
-  ]
-}
-EOF
+  name               = "tf_test_role_test_%[1]s"
+  path               = "/"
+  assume_role_policy = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"ec2.amazonaws.com\"},\"Action\":\"sts:AssumeRole\"}]}"
 }
 
 resource "aws_iam_role_policy" "test_%[1]s" {
@@ -386,7 +371,7 @@ EOF
 
 resource "aws_iam_role_policy" "test" {
   name = "tf_test_policy_%s"
-  role = aws_iam_role.test.name
+  role = "${aws_iam_role.test.name}"
 
   policy = <<EOF
 {
@@ -427,7 +412,7 @@ EOF
 
 resource "aws_iam_role_policy" "test" {
   name_prefix = "tf_test_policy_"
-  role        = aws_iam_role.test.name
+  role        = "${aws_iam_role.test.name}"
 
   policy = <<EOF
 {
@@ -467,7 +452,7 @@ EOF
 }
 
 resource "aws_iam_role_policy" "test" {
-  role = aws_iam_role.test.name
+  role = "${aws_iam_role.test.name}"
 
   policy = <<EOF
 {
@@ -508,7 +493,7 @@ EOF
 
 resource "aws_iam_role_policy" "test" {
   name = "tf_test_policy_%s"
-  role = aws_iam_role.test.name
+  role = "${aws_iam_role.test.name}"
 
   policy = <<EOF
 {
@@ -524,7 +509,7 @@ EOF
 
 resource "aws_iam_role_policy" "test2" {
   name = "tf_test_policy_2_%s"
-  role = aws_iam_role.test.name
+  role = "${aws_iam_role.test.name}"
 
   policy = <<EOF
 {
@@ -565,15 +550,16 @@ EOF
 
 resource "aws_iam_role_policy" "test" {
   name = "tf_test_policy_%s"
-  role = aws_iam_role.test.name
+  role = "${aws_iam_role.test.name}"
 
   policy = <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": {
-    "Effect": "Allow",
-    "Action": "*",
-    "Resource": "*"
+  {
+    "Version": "2012-10-17",
+    "Statement": {
+      "Effect": "Allow",
+      "Action": "*",
+      "Resource": "*"
+    }
   }
   EOF
 }

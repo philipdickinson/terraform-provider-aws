@@ -24,7 +24,7 @@ data "aws_vpcs" "foo" {
 }
 
 output "foo" {
-  value = data.aws_vpcs.foo.ids
+  value = "${data.aws_vpcs.foo.ids}"
 }
 ```
 
@@ -33,28 +33,23 @@ An example use case would be interpolate the `aws_vpcs` output into `count` of a
 ```hcl
 data "aws_vpcs" "foo" {}
 
-data "aws_vpc" "foo" {
-  count = length(data.aws_vpcs.foo.ids)
-  id    = tolist(data.aws_vpcs.foo.ids)[count.index]
-}
-
 resource "aws_flow_log" "test_flow_log" {
-  count = length(data.aws_vpcs.foo.ids)
+  count = "${length(data.aws_vpcs.foo.ids)}"
 
   # ...
-  vpc_id = data.aws_vpc.foo[count.index].id
+  vpc_id = "${element(data.aws_vpcs.foo.ids, count.index)}"
 
   # ...
 }
 
 output "foo" {
-  value = data.aws_vpcs.foo.ids
+  value = "${data.aws_vpcs.foo.ids}"
 }
 ```
 
 ## Argument Reference
 
-* `tags` - (Optional) A map of tags, each pair of which must exactly match
+* `tags` - (Optional) A mapping of tags, each pair of which must exactly match
   a pair on the desired vpcs.
 
 * `filter` - (Optional) Custom filter block as described below.
@@ -70,5 +65,4 @@ which take the following arguments:
 
 ## Attributes Reference
 
-* `id` - AWS Region.
 * `ids` - A list of all the VPC Ids found. This data source will fail if none are found.

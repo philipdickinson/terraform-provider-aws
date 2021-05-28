@@ -3,7 +3,7 @@ package aws
 import (
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAWSCloudWatchMetricAlarmMigrateState(t *testing.T) {

@@ -9,11 +9,10 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
-	"github.com/terraform-providers/terraform-provider-aws/aws/internal/hashcode"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/hashcode"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 	"github.com/terraform-providers/terraform-provider-aws/aws/internal/keyvaluetags"
 )
 
@@ -22,25 +21,24 @@ func dataSourceAwsAmi() *schema.Resource {
 		Read: dataSourceAwsAmiRead,
 
 		Schema: map[string]*schema.Schema{
-			"arn": {
-				Type:     schema.TypeString,
-				Computed: true,
-			},
 			"filter": dataSourceFiltersSchema(),
 			"executable_users": {
 				Type:     schema.TypeList,
 				Optional: true,
+				ForceNew: true,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 			},
 			"name_regex": {
 				Type:         schema.TypeString,
 				Optional:     true,
+				ForceNew:     true,
 				ValidateFunc: validation.StringIsValidRegExp,
 			},
 			"most_recent": {
 				Type:     schema.TypeBool,
 				Optional: true,
 				Default:  false,
+				ForceNew: true,
 			},
 			"owners": {
 				Type:     schema.TypeList,
@@ -154,7 +152,6 @@ func dataSourceAwsAmi() *schema.Resource {
 						"ebs": {
 							Type:     schema.TypeMap,
 							Computed: true,
-							Elem:     &schema.Schema{Type: schema.TypeString},
 						},
 					},
 				},
@@ -179,7 +176,6 @@ func dataSourceAwsAmi() *schema.Resource {
 			"state_reason": {
 				Type:     schema.TypeMap,
 				Computed: true,
-				Elem:     &schema.Schema{Type: schema.TypeString},
 			},
 			"tags": tagsSchemaComputed(),
 		},
@@ -214,13 +210,13 @@ func dataSourceAwsAmiRead(d *schema.ResourceData, meta interface{}) error {
 			// Check for a very rare case where the response would include no
 			// image name. No name means nothing to attempt a match against,
 			// therefore we are skipping such image.
-			if image.Name == nil || aws.StringValue(image.Name) == "" {
+			if image.Name == nil || *image.Name == "" {
 				log.Printf("[WARN] Unable to find AMI name to match against "+
 					"for image ID %q owned by %q, nothing to do.",
-					aws.StringValue(image.ImageId), aws.StringValue(image.OwnerId))
+					*image.ImageId, *image.OwnerId)
 				continue
 			}
-			if r.MatchString(aws.StringValue(image.Name)) {
+			if r.MatchString(*image.Name) {
 				filteredImages = append(filteredImages, image)
 			}
 		}
@@ -244,15 +240,13 @@ func dataSourceAwsAmiRead(d *schema.ResourceData, meta interface{}) error {
 		})
 	}
 
-	return amiDescriptionAttributes(d, filteredImages[0], meta)
+	return amiDescriptionAttributes(d, filteredImages[0])
 }
 
 // populate the numerous fields that the image description returns.
-func amiDescriptionAttributes(d *schema.ResourceData, image *ec2.Image, meta interface{}) error {
-	ignoreTagsConfig := meta.(*AWSClient).IgnoreTagsConfig
-
+func amiDescriptionAttributes(d *schema.ResourceData, image *ec2.Image) error {
 	// Simple attributes first
-	d.SetId(aws.StringValue(image.ImageId))
+	d.SetId(*image.ImageId)
 	d.Set("architecture", image.Architecture)
 	d.Set("creation_date", image.CreationDate)
 	if image.Description != nil {
@@ -297,19 +291,9 @@ func amiDescriptionAttributes(d *schema.ResourceData, image *ec2.Image, meta int
 	if err := d.Set("state_reason", amiStateReason(image.StateReason)); err != nil {
 		return err
 	}
-	if err := d.Set("tags", keyvaluetags.Ec2KeyValueTags(image.Tags).IgnoreAws().IgnoreConfig(ignoreTagsConfig).Map()); err != nil {
+	if err := d.Set("tags", keyvaluetags.Ec2KeyValueTags(image.Tags).IgnoreAws().Map()); err != nil {
 		return fmt.Errorf("error setting tags: %s", err)
 	}
-
-	imageArn := arn.ARN{
-		Partition: meta.(*AWSClient).partition,
-		Region:    meta.(*AWSClient).region,
-		Resource:  fmt.Sprintf("image/%s", d.Id()),
-		Service:   "ec2",
-	}.String()
-
-	d.Set("arn", imageArn)
-
 	return nil
 }
 
@@ -329,7 +313,6 @@ func amiBlockDeviceMappings(m []*ec2.BlockDeviceMapping) *schema.Set {
 				"delete_on_termination": fmt.Sprintf("%t", aws.BoolValue(v.Ebs.DeleteOnTermination)),
 				"encrypted":             fmt.Sprintf("%t", aws.BoolValue(v.Ebs.Encrypted)),
 				"iops":                  fmt.Sprintf("%d", aws.Int64Value(v.Ebs.Iops)),
-				"throughput":            fmt.Sprintf("%d", aws.Int64Value(v.Ebs.Throughput)),
 				"volume_size":           fmt.Sprintf("%d", aws.Int64Value(v.Ebs.VolumeSize)),
 				"snapshot_id":           aws.StringValue(v.Ebs.SnapshotId),
 				"volume_type":           aws.StringValue(v.Ebs.VolumeType),
@@ -365,12 +348,11 @@ func amiRootSnapshotId(image *ec2.Image) string {
 		return ""
 	}
 	for _, bdm := range image.BlockDeviceMappings {
-		if bdm.DeviceName == nil ||
-			aws.StringValue(bdm.DeviceName) != aws.StringValue(image.RootDeviceName) {
+		if bdm.DeviceName == nil || *bdm.DeviceName != *image.RootDeviceName {
 			continue
 		}
 		if bdm.Ebs != nil && bdm.Ebs.SnapshotId != nil {
-			return aws.StringValue(bdm.Ebs.SnapshotId)
+			return *bdm.Ebs.SnapshotId
 		}
 	}
 	return ""

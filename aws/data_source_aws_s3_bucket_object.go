@@ -10,7 +10,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/terraform-providers/terraform-provider-aws/aws/internal/keyvaluetags"
 )
 
@@ -74,7 +74,6 @@ func dataSourceAwsS3BucketObject() *schema.Resource {
 			"metadata": {
 				Type:     schema.TypeMap,
 				Computed: true,
-				Elem:     &schema.Schema{Type: schema.TypeString},
 			},
 			"object_lock_legal_hold_status": {
 				Type:     schema.TypeString,
@@ -121,7 +120,6 @@ func dataSourceAwsS3BucketObject() *schema.Resource {
 
 func dataSourceAwsS3BucketObjectRead(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).s3conn
-	ignoreTagsConfig := meta.(*AWSClient).IgnoreTagsConfig
 
 	bucket := d.Get("bucket").(string)
 	key := d.Get("key").(string)
@@ -149,7 +147,7 @@ func dataSourceAwsS3BucketObjectRead(d *schema.ResourceData, meta interface{}) e
 	if err != nil {
 		return fmt.Errorf("Failed getting S3 object: %s Bucket: %q Object: %q", err, bucket, key)
 	}
-	if aws.BoolValue(out.DeleteMarker) {
+	if out.DeleteMarker != nil && *out.DeleteMarker {
 		return fmt.Errorf("Requested S3 object %q%s has been deleted",
 			bucket+key, versionText)
 	}
@@ -165,14 +163,10 @@ func dataSourceAwsS3BucketObjectRead(d *schema.ResourceData, meta interface{}) e
 	d.Set("content_length", out.ContentLength)
 	d.Set("content_type", out.ContentType)
 	// See https://forums.aws.amazon.com/thread.jspa?threadID=44003
-	d.Set("etag", strings.Trim(aws.StringValue(out.ETag), `"`))
+	d.Set("etag", strings.Trim(*out.ETag, `"`))
 	d.Set("expiration", out.Expiration)
 	d.Set("expires", out.Expires)
-	if out.LastModified != nil {
-		d.Set("last_modified", out.LastModified.Format(time.RFC1123))
-	} else {
-		d.Set("last_modified", "")
-	}
+	d.Set("last_modified", out.LastModified.Format(time.RFC1123))
 	d.Set("metadata", pointersMapToStringList(out.Metadata))
 	d.Set("object_lock_legal_hold_status", out.ObjectLockLegalHoldStatus)
 	d.Set("object_lock_mode", out.ObjectLockMode)
@@ -231,7 +225,7 @@ func dataSourceAwsS3BucketObjectRead(d *schema.ResourceData, meta interface{}) e
 		return fmt.Errorf("error listing tags for S3 Bucket (%s) Object (%s): %s", bucket, key, err)
 	}
 
-	if err := d.Set("tags", tags.IgnoreAws().IgnoreConfig(ignoreTagsConfig).Map()); err != nil {
+	if err := d.Set("tags", tags.IgnoreAws().Map()); err != nil {
 		return fmt.Errorf("error setting tags: %s", err)
 	}
 

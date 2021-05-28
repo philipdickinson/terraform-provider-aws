@@ -7,9 +7,10 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/elb"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccAWSLBCookieStickinessPolicy_basic(t *testing.T) {
@@ -97,10 +98,24 @@ func testAccCheckLBCookieStickinessPolicy(elbResource string, policyResource str
 	}
 }
 
-func TestAccAWSLBCookieStickinessPolicy_disappears(t *testing.T) {
+func TestAccAWSLBCookieStickinessPolicy_drift(t *testing.T) {
 	lbName := fmt.Sprintf("tf-test-lb-%s", acctest.RandString(5))
-	elbResourceName := "aws_elb.lb"
-	resourceName := "aws_lb_cookie_stickiness_policy.foo"
+
+	// We only want to remove the reference to the policy from the listner,
+	// beacause that's all that can be done via the console.
+	removePolicy := func() {
+		conn := testAccProvider.Meta().(*AWSClient).elbconn
+
+		setLoadBalancerOpts := &elb.SetLoadBalancerPoliciesOfListenerInput{
+			LoadBalancerName: aws.String(lbName),
+			LoadBalancerPort: aws.Int64(80),
+			PolicyNames:      []*string{},
+		}
+
+		if _, err := conn.SetLoadBalancerPoliciesOfListener(setLoadBalancerOpts); err != nil {
+			t.Fatalf("Error removing LBCookieStickinessPolicy: %s", err)
+		}
+	}
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
@@ -110,19 +125,39 @@ func TestAccAWSLBCookieStickinessPolicy_disappears(t *testing.T) {
 			{
 				Config: testAccLBCookieStickinessPolicyConfig(lbName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckLBCookieStickinessPolicy(elbResourceName, resourceName),
-					testAccCheckResourceDisappears(testAccProvider, resourceAwsLBCookieStickinessPolicy(), resourceName),
+					testAccCheckLBCookieStickinessPolicy(
+						"aws_elb.lb",
+						"aws_lb_cookie_stickiness_policy.foo",
+					),
 				),
-				ExpectNonEmptyPlan: true,
+			},
+			{
+				PreConfig: removePolicy,
+				Config:    testAccLBCookieStickinessPolicyConfig(lbName),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckLBCookieStickinessPolicy(
+						"aws_elb.lb",
+						"aws_lb_cookie_stickiness_policy.foo",
+					),
+				),
 			},
 		},
 	})
 }
 
-func TestAccAWSLBCookieStickinessPolicy_disappears_ELB(t *testing.T) {
+func TestAccAWSLBCookieStickinessPolicy_missingLB(t *testing.T) {
 	lbName := fmt.Sprintf("tf-test-lb-%s", acctest.RandString(5))
-	elbResourceName := "aws_elb.lb"
-	resourceName := "aws_lb_cookie_stickiness_policy.foo"
+
+	// check that we can destroy the policy if the LB is missing
+	removeLB := func() {
+		conn := testAccProvider.Meta().(*AWSClient).elbconn
+		deleteElbOpts := elb.DeleteLoadBalancerInput{
+			LoadBalancerName: aws.String(lbName),
+		}
+		if _, err := conn.DeleteLoadBalancer(&deleteElbOpts); err != nil {
+			t.Fatalf("Error deleting ELB: %s", err)
+		}
+	}
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
@@ -132,20 +167,25 @@ func TestAccAWSLBCookieStickinessPolicy_disappears_ELB(t *testing.T) {
 			{
 				Config: testAccLBCookieStickinessPolicyConfig(lbName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckLBCookieStickinessPolicy(elbResourceName, resourceName),
-					testAccCheckResourceDisappears(testAccProvider, resourceAwsElb(), elbResourceName),
+					testAccCheckLBCookieStickinessPolicy(
+						"aws_elb.lb",
+						"aws_lb_cookie_stickiness_policy.foo",
+					),
 				),
-				ExpectNonEmptyPlan: true,
+			},
+			{
+				PreConfig: removeLB,
+				Config:    testAccLBCookieStickinessPolicyConfigDestroy(lbName),
 			},
 		},
 	})
 }
 
 func testAccLBCookieStickinessPolicyConfig(rName string) string {
-	return composeConfig(testAccAvailableAZsNoOptInConfig(), fmt.Sprintf(`
+	return fmt.Sprintf(`
 resource "aws_elb" "lb" {
   name               = "%s"
-  availability_zones = [data.aws_availability_zones.available.names[0]]
+  availability_zones = ["us-west-2a"]
 
   listener {
     instance_port     = 8000
@@ -157,18 +197,18 @@ resource "aws_elb" "lb" {
 
 resource "aws_lb_cookie_stickiness_policy" "foo" {
   name          = "foo-policy"
-  load_balancer = aws_elb.lb.id
+  load_balancer = "${aws_elb.lb.id}"
   lb_port       = 80
 }
-`, rName))
+`, rName)
 }
 
 // Sets the cookie_expiration_period to 300s.
 func testAccLBCookieStickinessPolicyConfigUpdate(rName string) string {
-	return composeConfig(testAccAvailableAZsNoOptInConfig(), fmt.Sprintf(`
+	return fmt.Sprintf(`
 resource "aws_elb" "lb" {
   name               = "%s"
-  availability_zones = [data.aws_availability_zones.available.names[0]]
+  availability_zones = ["us-west-2a"]
 
   listener {
     instance_port     = 8000
@@ -180,9 +220,26 @@ resource "aws_elb" "lb" {
 
 resource "aws_lb_cookie_stickiness_policy" "foo" {
   name                     = "foo-policy"
-  load_balancer            = aws_elb.lb.id
+  load_balancer            = "${aws_elb.lb.id}"
   lb_port                  = 80
   cookie_expiration_period = 300
 }
-`, rName))
+`, rName)
+}
+
+// attempt to destroy the policy, but we'll delete the LB in the PreConfig
+func testAccLBCookieStickinessPolicyConfigDestroy(rName string) string {
+	return fmt.Sprintf(`
+resource "aws_elb" "lb" {
+  name               = "%s"
+  availability_zones = ["us-west-2a"]
+
+  listener {
+    instance_port     = 8000
+    instance_protocol = "http"
+    lb_port           = 80
+    lb_protocol       = "http"
+  }
+}
+`, rName)
 }

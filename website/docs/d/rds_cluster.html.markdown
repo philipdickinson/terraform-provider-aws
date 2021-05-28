@@ -3,12 +3,12 @@ subcategory: "RDS"
 layout: "aws"
 page_title: "AWS: aws_rds_cluster"
 description: |-
-  Provides an RDS cluster data source.
+  Provides a RDS cluster data source.
 ---
 
 # Data Source: aws_rds_cluster
 
-Provides information about an RDS cluster.
+Provides information about a RDS cluster.
 
 ## Example Usage
 

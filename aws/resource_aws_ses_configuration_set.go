@@ -6,7 +6,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ses"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 func resourceAwsSesConfigurationSet() *schema.Resource {
@@ -50,24 +50,19 @@ func resourceAwsSesConfigurationSetCreate(d *schema.ResourceData, meta interface
 }
 
 func resourceAwsSesConfigurationSetRead(d *schema.ResourceData, meta interface{}) error {
-	conn := meta.(*AWSClient).sesconn
+	configurationSetExists, err := findConfigurationSet(d.Id(), nil, meta)
 
-	configSetInput := &ses.DescribeConfigurationSetInput{
-		ConfigurationSetName: aws.String(d.Id()),
+	if !configurationSetExists {
+		log.Printf("[WARN] SES Configuration Set (%s) not found", d.Id())
+		d.SetId("")
+		return nil
 	}
 
-	response, err := conn.DescribeConfigurationSet(configSetInput)
-
 	if err != nil {
-		if isAWSErr(err, ses.ErrCodeConfigurationSetDoesNotExistException, "") {
-			log.Printf("[WARN] SES Configuration Set (%s) not found, removing from state", d.Id())
-			d.SetId("")
-			return nil
-		}
 		return err
 	}
 
-	d.Set("name", aws.StringValue(response.ConfigurationSet.Name))
+	d.Set("name", d.Id())
 
 	return nil
 }
@@ -81,4 +76,31 @@ func resourceAwsSesConfigurationSetDelete(d *schema.ResourceData, meta interface
 	})
 
 	return err
+}
+
+func findConfigurationSet(name string, token *string, meta interface{}) (bool, error) {
+	conn := meta.(*AWSClient).sesconn
+
+	configurationSetExists := false
+
+	listOpts := &ses.ListConfigurationSetsInput{
+		NextToken: token,
+	}
+
+	response, err := conn.ListConfigurationSets(listOpts)
+	for _, element := range response.ConfigurationSets {
+		if *element.Name == name {
+			configurationSetExists = true
+		}
+	}
+
+	if err != nil && !configurationSetExists && response.NextToken != nil {
+		configurationSetExists, err = findConfigurationSet(name, response.NextToken, meta)
+	}
+
+	if err != nil {
+		return false, err
+	}
+
+	return configurationSetExists, nil
 }

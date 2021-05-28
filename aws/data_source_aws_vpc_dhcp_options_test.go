@@ -5,8 +5,8 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 )
 
 func TestAccDataSourceAwsVpcDhcpOptions_basic(t *testing.T) {
@@ -37,7 +37,6 @@ func TestAccDataSourceAwsVpcDhcpOptions_basic(t *testing.T) {
 					resource.TestCheckResourceAttrPair(datasourceName, "tags.%", resourceName, "tags.%"),
 					resource.TestCheckResourceAttrPair(datasourceName, "tags.Name", resourceName, "tags.Name"),
 					resource.TestCheckResourceAttrPair(datasourceName, "owner_id", resourceName, "owner_id"),
-					resource.TestCheckResourceAttrPair(datasourceName, "arn", resourceName, "arn"),
 				),
 			},
 		},
@@ -46,7 +45,7 @@ func TestAccDataSourceAwsVpcDhcpOptions_basic(t *testing.T) {
 
 func TestAccDataSourceAwsVpcDhcpOptions_Filter(t *testing.T) {
 	rInt := acctest.RandInt()
-	resourceName := "aws_vpc_dhcp_options.test.0"
+	resourceName := "aws_vpc_dhcp_options.test"
 	datasourceName := "data.aws_vpc_dhcp_options.test"
 
 	resource.ParallelTest(t, resource.TestCase{
@@ -110,7 +109,7 @@ resource "aws_vpc_dhcp_options" "test" {
 }
 
 data "aws_vpc_dhcp_options" "test" {
-  dhcp_options_id = aws_vpc_dhcp_options.test.id
+  dhcp_options_id = "${aws_vpc_dhcp_options.test.id}"
 }
 `
 
@@ -121,16 +120,16 @@ resource "aws_vpc_dhcp_options" "incorrect" {
 }
 
 resource "aws_vpc_dhcp_options" "test" {
-  count = %[2]d
+  count = %d
 
-  domain_name          = "tf-acc-test-%[1]d.example.com"
+  domain_name          = "tf-acc-test-%d.example.com"
   domain_name_servers  = ["127.0.0.1", "10.0.0.2"]
   netbios_name_servers = ["127.0.0.1"]
   netbios_node_type    = 2
   ntp_servers          = ["127.0.0.1"]
 
   tags = {
-    Name = "tf-acc-test-%[1]d"
+    Name = "tf-acc-test-%d"
   }
 }
 
@@ -142,8 +141,8 @@ data "aws_vpc_dhcp_options" "test" {
 
   filter {
     name   = "value"
-    values = [aws_vpc_dhcp_options.test[0].domain_name]
+    values = ["${aws_vpc_dhcp_options.test.0.domain_name}"]
   }
 }
-`, rInt, count)
+`, count, rInt, rInt)
 }

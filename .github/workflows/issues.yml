@@ -1,6 +1,4 @@
-on:
-  issues:
-    types: [opened]
+on: issues
 name: Issue triage
 jobs:
   markIssuesForTriage:
@@ -8,14 +6,17 @@ jobs:
     steps:
     - uses: actions/checkout@v1.0.0
     - name: Apply Issue Triage Label
-      uses: actions/github-script@v3
-      if: github.event.action == 'opened' && !contains(fromJSON('["anGie44", "bflad", "breathingdust", "DrFaust92", "ewbankkit", "gdavison", "maryelizbeth", "YakDriver"]'), github.actor)
+      uses: actions/github@v1.0.0
+      if: github.event.action == 'opened'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        script: |
-          github.issues.addLabels({
-            issue_number: context.issue.number,
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            labels: ['needs-triage']
-          })
+        args: label needs-triage
+
+    - name: Add new issue into Triage Board
+      uses: alex-page/github-project-automation-plus@v0.1.1
+      if: github.event.action == 'opened'
+      with:
+        project: AWS Provider Triage
+        column:  Needs Triage
+        repo-token: ${{ secrets.GITHUB_ACTIONS_TOKEN }}

@@ -8,7 +8,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/rds"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 func dataSourceAwsDbSnapshot() *schema.Resource {
@@ -20,33 +20,39 @@ func dataSourceAwsDbSnapshot() *schema.Resource {
 			"db_instance_identifier": {
 				Type:     schema.TypeString,
 				Optional: true,
+				ForceNew: true,
 			},
 
 			"db_snapshot_identifier": {
 				Type:     schema.TypeString,
 				Optional: true,
+				ForceNew: true,
 			},
 
 			"snapshot_type": {
 				Type:     schema.TypeString,
 				Optional: true,
+				ForceNew: true,
 			},
 
 			"include_shared": {
 				Type:     schema.TypeBool,
 				Optional: true,
+				ForceNew: true,
 				Default:  false,
 			},
 
 			"include_public": {
 				Type:     schema.TypeBool,
 				Optional: true,
+				ForceNew: true,
 				Default:  false,
 			},
 			"most_recent": {
 				Type:     schema.TypeBool,
 				Optional: true,
 				Default:  false,
+				ForceNew: true,
 			},
 
 			//Computed values returned
@@ -195,7 +201,7 @@ func mostRecentDbSnapshot(snapshots []*rds.DBSnapshot) *rds.DBSnapshot {
 }
 
 func dbSnapshotDescriptionAttributes(d *schema.ResourceData, snapshot *rds.DBSnapshot) error {
-	d.SetId(aws.StringValue(snapshot.DBSnapshotIdentifier))
+	d.SetId(*snapshot.DBSnapshotIdentifier)
 	d.Set("db_instance_identifier", snapshot.DBInstanceIdentifier)
 	d.Set("db_snapshot_identifier", snapshot.DBSnapshotIdentifier)
 	d.Set("snapshot_type", snapshot.SnapshotType)

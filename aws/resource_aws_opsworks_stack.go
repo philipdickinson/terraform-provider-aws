@@ -11,8 +11,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/opsworks"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/terraform-providers/terraform-provider-aws/aws/internal/keyvaluetags"
 )
 
@@ -131,9 +131,8 @@ func resourceAwsOpsworksStack() *schema.Resource {
 			},
 
 			"custom_json": {
-				Type:             schema.TypeString,
-				Optional:         true,
-				DiffSuppressFunc: suppressEquivalentJsonDiffs,
+				Type:     schema.TypeString,
+				Optional: true,
 			},
 
 			"default_availability_zone": {
@@ -236,7 +235,7 @@ func resourceAwsOpsworksStackCustomCookbooksSource(d *schema.ResourceData) *opsw
 	}
 }
 
-func resourceAwsOpsworksSetStackCustomCookbooksSource(d *schema.ResourceData, v *opsworks.Source) error {
+func resourceAwsOpsworksSetStackCustomCookbooksSource(d *schema.ResourceData, v *opsworks.Source) {
 	nv := make([]interface{}, 0, 1)
 	if v != nil && v.Type != nil && *v.Type != "" {
 		m := make(map[string]interface{})
@@ -265,15 +264,12 @@ func resourceAwsOpsworksSetStackCustomCookbooksSource(d *schema.ResourceData, v 
 	err := d.Set("custom_cookbooks_source", nv)
 	if err != nil {
 		// should never happen
-		return err
+		panic(err)
 	}
-	return nil
 }
 
 func resourceAwsOpsworksStackRead(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(*AWSClient).opsworksconn
-	ignoreTagsConfig := meta.(*AWSClient).IgnoreTagsConfig
-
 	var conErr error
 	if v := d.Get("stack_endpoint").(string); v != "" {
 		client, conErr = opsworksConnForRegion(v, meta)
@@ -308,7 +304,7 @@ func resourceAwsOpsworksStackRead(d *schema.ResourceData, meta interface{}) erro
 						// If we haven't already, try us-east-1, legacy connection
 						notFound++
 						var connErr error
-						client, connErr = opsworksConnForRegion("us-east-1", meta) //lintignore:AWSAT003
+						client, connErr = opsworksConnForRegion("us-east-1", meta)
 						if connErr != nil {
 							return connErr
 						}
@@ -370,10 +366,7 @@ func resourceAwsOpsworksStackRead(d *schema.ResourceData, meta interface{}) erro
 		d.Set("berkshelf_version", stack.ChefConfiguration.BerkshelfVersion)
 		d.Set("manage_berkshelf", stack.ChefConfiguration.ManageBerkshelf)
 	}
-	err := resourceAwsOpsworksSetStackCustomCookbooksSource(d, stack.CustomCookbooksSource)
-	if err != nil {
-		return err
-	}
+	resourceAwsOpsworksSetStackCustomCookbooksSource(d, stack.CustomCookbooksSource)
 
 	tags, err := keyvaluetags.OpsworksListTags(client, arn)
 
@@ -381,7 +374,7 @@ func resourceAwsOpsworksStackRead(d *schema.ResourceData, meta interface{}) erro
 		return fmt.Errorf("error listing tags for Opsworks stack (%s): %s", arn, err)
 	}
 
-	if err := d.Set("tags", tags.IgnoreAws().IgnoreConfig(ignoreTagsConfig).Map()); err != nil {
+	if err := d.Set("tags", tags.IgnoreAws().Map()); err != nil {
 		return fmt.Errorf("error setting tags: %s", err)
 	}
 

@@ -3,14 +3,12 @@ subcategory: "DynamoDB"
 layout: "aws"
 page_title: "AWS: aws_dynamodb_global_table"
 description: |-
-  Manages DynamoDB Global Tables V1 (version 2017.11.29)
+  Provides a resource to create a DynamoDB Global Table
 ---
 
 # Resource: aws_dynamodb_global_table
 
-Manages [DynamoDB Global Tables V1 (version 2017.11.29)](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.V1.html). These are layered on top of existing DynamoDB Tables.
-
-~> **NOTE:** To instead manage [DynamoDB Global Tables V2 (version 2019.11.21)](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.V2.html), use the [`aws_dynamodb_table` resource](/docs/providers/aws/r/dynamodb_table.html) `replica` configuration block.
+Provides a resource to manage a DynamoDB Global Table. These are layered on top of existing DynamoDB Tables.
 
 ~> Note: There are many restrictions before you can properly create DynamoDB Global Tables in multiple regions. See the [AWS DynamoDB Global Table Requirements](http://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables_reqs_bestpractices.html) for more information.
 
@@ -28,7 +26,7 @@ provider "aws" {
 }
 
 resource "aws_dynamodb_table" "us-east-1" {
-  provider = aws.us-east-1
+  provider = "aws.us-east-1"
 
   hash_key         = "myAttribute"
   name             = "myTable"
@@ -44,7 +42,7 @@ resource "aws_dynamodb_table" "us-east-1" {
 }
 
 resource "aws_dynamodb_table" "us-west-2" {
-  provider = aws.us-west-2
+  provider = "aws.us-west-2"
 
   hash_key         = "myAttribute"
   name             = "myTable"
@@ -60,11 +58,8 @@ resource "aws_dynamodb_table" "us-west-2" {
 }
 
 resource "aws_dynamodb_global_table" "myTable" {
-  depends_on = [
-    aws_dynamodb_table.us-east-1,
-    aws_dynamodb_table.us-west-2,
-  ]
-  provider = aws.us-east-1
+  depends_on = ["aws_dynamodb_table.us-east-1", "aws_dynamodb_table.us-west-2"]
+  provider   = "aws.us-east-1"
 
   name = "myTable"
 

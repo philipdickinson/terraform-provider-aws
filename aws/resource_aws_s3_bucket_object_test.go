@@ -15,10 +15,9 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-	"github.com/terraform-providers/terraform-provider-aws/aws/internal/keyvaluetags"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func init() {
@@ -196,7 +195,6 @@ func TestAccAWSS3BucketObject_etagEncryption(t *testing.T) {
 	resourceName := "aws_s3_bucket_object.object"
 	rInt := acctest.RandInt()
 	source := testAccAWSS3BucketObjectCreateTempFile(t, "{anything will do }")
-	defer os.Remove(source)
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
@@ -956,77 +954,6 @@ func TestAccAWSS3BucketObject_ObjectLockRetentionStartWithSet(t *testing.T) {
 	})
 }
 
-func TestAccAWSS3BucketObject_defaultBucketSSE(t *testing.T) {
-	var obj1 s3.GetObjectOutput
-	resourceName := "aws_s3_bucket_object.object"
-	rInt := acctest.RandInt()
-
-	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t) },
-		Providers:    testAccProviders,
-		CheckDestroy: testAccCheckAWSS3BucketObjectDestroy,
-		Steps: []resource.TestStep{
-			{
-				Config: testAccAWSS3BucketObjectConfig_defaultBucketSSE(rInt, "stuff"),
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckAWSS3BucketObjectExists(resourceName, &obj1),
-					testAccCheckAWSS3BucketObjectBody(&obj1, "stuff"),
-				),
-			},
-		},
-	})
-}
-
-func TestAccAWSS3BucketObject_ignoreTags(t *testing.T) {
-	var obj s3.GetObjectOutput
-	resourceName := "aws_s3_bucket_object.object"
-	rInt := acctest.RandInt()
-	key := "test-key"
-
-	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t) },
-		Providers:    testAccProviders,
-		CheckDestroy: testAccCheckAWSS3BucketObjectDestroy,
-		Steps: []resource.TestStep{
-			{
-				PreConfig: func() {},
-				Config: composeConfig(
-					testAccProviderConfigIgnoreTagsKeyPrefixes1("ignorekey"),
-					testAccAWSS3BucketObjectConfig_withNoTags(rInt, key, "stuff")),
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckAWSS3BucketObjectExists(resourceName, &obj),
-					testAccCheckAWSS3BucketObjectBody(&obj, "stuff"),
-					testAccCheckAWSS3BucketObjectUpdateTags(resourceName, nil, map[string]string{"ignorekey1": "ignorevalue1"}),
-					resource.TestCheckResourceAttr(resourceName, "tags.%", "0"),
-					testAccCheckAWSS3BucketObjectCheckTags(resourceName, map[string]string{
-						"ignorekey1": "ignorevalue1",
-					}),
-				),
-			},
-			{
-				PreConfig: func() {},
-				Config: composeConfig(
-					testAccProviderConfigIgnoreTagsKeyPrefixes1("ignorekey"),
-					testAccAWSS3BucketObjectConfig_withTags(rInt, key, "stuff")),
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckAWSS3BucketObjectExists(resourceName, &obj),
-					testAccCheckAWSS3BucketObjectBody(&obj, "stuff"),
-					resource.TestCheckResourceAttr(resourceName, "tags.%", "3"),
-					resource.TestCheckResourceAttr(resourceName, "tags.Key1", "AAA"),
-					resource.TestCheckResourceAttr(resourceName, "tags.Key2", "BBB"),
-					resource.TestCheckResourceAttr(resourceName, "tags.Key3", "CCC"),
-					testAccCheckAWSS3BucketObjectCheckTags(resourceName, map[string]string{
-						"ignorekey1": "ignorevalue1",
-						"Key1":       "AAA",
-						"Key2":       "BBB",
-						"Key3":       "CCC",
-					}),
-				),
-			},
-		},
-	})
-}
-
 func testAccCheckAWSS3BucketObjectVersionIdDiffers(first, second *s3.GetObjectOutput) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		if first.VersionId == nil {
@@ -1228,39 +1155,11 @@ func testAccAWSS3BucketObjectCreateTempFile(t *testing.T, data string) string {
 	return filename
 }
 
-func testAccCheckAWSS3BucketObjectUpdateTags(n string, oldTags, newTags map[string]string) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
-		rs := s.RootModule().Resources[n]
-		conn := testAccProvider.Meta().(*AWSClient).s3conn
-
-		return keyvaluetags.S3ObjectUpdateTags(conn, rs.Primary.Attributes["bucket"], rs.Primary.Attributes["key"], oldTags, newTags)
-	}
-}
-
-func testAccCheckAWSS3BucketObjectCheckTags(n string, expectedTags map[string]string) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
-		rs := s.RootModule().Resources[n]
-		conn := testAccProvider.Meta().(*AWSClient).s3conn
-
-		got, err := keyvaluetags.S3ObjectListTags(conn, rs.Primary.Attributes["bucket"], rs.Primary.Attributes["key"])
-		if err != nil {
-			return err
-		}
-
-		want := keyvaluetags.New(expectedTags)
-		if !reflect.DeepEqual(want, got) {
-			return fmt.Errorf("Incorrect tags, want: %v got: %v", want, got)
-		}
-
-		return nil
-	}
-}
-
 func testAccAWSS3BucketObjectConfigBasic(bucket, key string) string {
 	return fmt.Sprintf(`
 resource "aws_s3_bucket_object" "object" {
-  bucket = %[1]q
-  key    = %[2]q
+  bucket = "%s"
+  key = "%s"
 }
 `, bucket, key)
 }
@@ -1272,8 +1171,8 @@ resource "aws_s3_bucket" "object_bucket" {
 }
 
 resource "aws_s3_bucket_object" "object" {
-  bucket = aws_s3_bucket.object_bucket.bucket
-  key    = "test-key"
+  bucket = "${aws_s3_bucket.object_bucket.bucket}"
+  key = "test-key"
 }
 `, randInt)
 }
@@ -1281,13 +1180,13 @@ resource "aws_s3_bucket_object" "object" {
 func testAccAWSS3BucketObjectConfigSource(randInt int, source string) string {
 	return fmt.Sprintf(`
 resource "aws_s3_bucket" "object_bucket" {
-  bucket = "tf-object-test-bucket-%[1]d"
+  bucket = "tf-object-test-bucket-%d"
 }
 
 resource "aws_s3_bucket_object" "object" {
-  bucket       = aws_s3_bucket.object_bucket.bucket
+  bucket       = "${aws_s3_bucket.object_bucket.bucket}"
   key          = "test-key"
-  source       = %[2]q
+  source       = "%s"
   content_type = "binary/octet-stream"
 }
 `, randInt, source)
@@ -1296,13 +1195,13 @@ resource "aws_s3_bucket_object" "object" {
 func testAccAWSS3BucketObjectConfig_withContentCharacteristics(randInt int, source string) string {
 	return fmt.Sprintf(`
 resource "aws_s3_bucket" "object_bucket" {
-  bucket = "tf-object-test-bucket-%[1]d"
+  bucket = "tf-object-test-bucket-%d"
 }
 
 resource "aws_s3_bucket_object" "object" {
-  bucket           = aws_s3_bucket.object_bucket.bucket
+  bucket           = "${aws_s3_bucket.object_bucket.bucket}"
   key              = "test-key"
-  source           = %[2]q
+  source           = "%s"
   content_language = "en"
   content_type     = "binary/octet-stream"
   website_redirect = "http://google.com"
@@ -1313,13 +1212,13 @@ resource "aws_s3_bucket_object" "object" {
 func testAccAWSS3BucketObjectConfigContent(randInt int, content string) string {
 	return fmt.Sprintf(`
 resource "aws_s3_bucket" "object_bucket" {
-  bucket = "tf-object-test-bucket-%[1]d"
+  bucket = "tf-object-test-bucket-%d"
 }
 
 resource "aws_s3_bucket_object" "object" {
-  bucket  = aws_s3_bucket.object_bucket.bucket
+  bucket  = "${aws_s3_bucket.object_bucket.bucket}"
   key     = "test-key"
-  content = %[2]q
+  content = "%s"
 }
 `, randInt, content)
 }
@@ -1327,29 +1226,29 @@ resource "aws_s3_bucket_object" "object" {
 func testAccAWSS3BucketObjectEtagEncryption(randInt int, source string) string {
 	return fmt.Sprintf(`
 resource "aws_s3_bucket" "object_bucket" {
-  bucket = "tf-object-test-bucket-%[1]d"
+  bucket = "tf-object-test-bucket-%d"
 }
 
 resource "aws_s3_bucket_object" "object" {
-  bucket                 = aws_s3_bucket.object_bucket.bucket
-  key                    = "test-key"
+  bucket  = "${aws_s3_bucket.object_bucket.bucket}"
+  key     = "test-key"
+  source = "%s"
   server_side_encryption = "AES256"
-  source                 = %[2]q
-  etag                   = filemd5(%[2]q)
+  etag = "${filemd5("%s")}"
 }
-`, randInt, source)
+`, randInt, source, source)
 }
 
 func testAccAWSS3BucketObjectConfigContentBase64(randInt int, contentBase64 string) string {
 	return fmt.Sprintf(`
 resource "aws_s3_bucket" "object_bucket" {
-  bucket = "tf-object-test-bucket-%[1]d"
+  bucket = "tf-object-test-bucket-%d"
 }
 
 resource "aws_s3_bucket_object" "object" {
-  bucket         = aws_s3_bucket.object_bucket.bucket
+  bucket         = "${aws_s3_bucket.object_bucket.bucket}"
   key            = "test-key"
-  content_base64 = %[2]q
+  content_base64 = "%s"
 }
 `, randInt, contentBase64)
 }
@@ -1357,20 +1256,20 @@ resource "aws_s3_bucket_object" "object" {
 func testAccAWSS3BucketObjectConfig_updateable(randInt int, bucketVersioning bool, source string) string {
 	return fmt.Sprintf(`
 resource "aws_s3_bucket" "object_bucket_3" {
-  bucket = "tf-object-test-bucket-%[1]d"
+  bucket = "tf-object-test-bucket-%d"
 
   versioning {
-    enabled = %[2]t
+    enabled = %t
   }
 }
 
 resource "aws_s3_bucket_object" "object" {
-  bucket = aws_s3_bucket.object_bucket_3.bucket
+  bucket = "${aws_s3_bucket.object_bucket_3.bucket}"
   key    = "updateable-key"
-  source = %[3]q
-  etag   = filemd5(%[3]q)
+  source = "%s"
+  etag   = "${filemd5("%s")}"
 }
-`, randInt, bucketVersioning, source)
+`, randInt, bucketVersioning, source, source)
 }
 
 func testAccAWSS3BucketObjectConfig_updateableViaAccessPoint(rName string, bucketVersioning bool, source string) string {
@@ -1384,15 +1283,15 @@ resource "aws_s3_bucket" "test" {
 }
 
 resource "aws_s3_access_point" "test" {
-  bucket = aws_s3_bucket.test.bucket
+  bucket = "${aws_s3_bucket.test.bucket}"
   name   = %[1]q
 }
 
 resource "aws_s3_bucket_object" "test" {
-  bucket = aws_s3_access_point.test.arn
+  bucket = "${aws_s3_access_point.test.arn}"
   key    = "updateable-key"
   source = %[3]q
-  etag   = filemd5(%[3]q)
+  etag   = "${filemd5(%[3]q)}"
 }
 `, rName, bucketVersioning, source)
 }
@@ -1402,14 +1301,14 @@ func testAccAWSS3BucketObjectConfig_withKMSId(randInt int, source string) string
 resource "aws_kms_key" "kms_key_1" {}
 
 resource "aws_s3_bucket" "object_bucket" {
-  bucket = "tf-object-test-bucket-%[1]d"
+  bucket = "tf-object-test-bucket-%d"
 }
 
 resource "aws_s3_bucket_object" "object" {
-  bucket     = aws_s3_bucket.object_bucket.bucket
+  bucket     = "${aws_s3_bucket.object_bucket.bucket}"
   key        = "test-key"
-  source     = %[2]q
-  kms_key_id = aws_kms_key.kms_key_1.arn
+  source     = "%s"
+  kms_key_id = "${aws_kms_key.kms_key_1.arn}"
 }
 `, randInt, source)
 }
@@ -1417,13 +1316,13 @@ resource "aws_s3_bucket_object" "object" {
 func testAccAWSS3BucketObjectConfig_withSSE(randInt int, source string) string {
 	return fmt.Sprintf(`
 resource "aws_s3_bucket" "object_bucket" {
-  bucket = "tf-object-test-bucket-%[1]d"
+  bucket = "tf-object-test-bucket-%d"
 }
 
 resource "aws_s3_bucket_object" "object" {
-  bucket                 = aws_s3_bucket.object_bucket.bucket
+  bucket                 = "${aws_s3_bucket.object_bucket.bucket}"
   key                    = "test-key"
-  source                 = %[2]q
+  source                 = "%s"
   server_side_encryption = "AES256"
 }
 `, randInt, source)
@@ -1432,7 +1331,7 @@ resource "aws_s3_bucket_object" "object" {
 func testAccAWSS3BucketObjectConfig_acl(randInt int, content, acl string) string {
 	return fmt.Sprintf(`
 resource "aws_s3_bucket" "object_bucket" {
-  bucket = "tf-object-test-bucket-%[1]d"
+  bucket = "tf-object-test-bucket-%d"
 
   versioning {
     enabled = true
@@ -1440,10 +1339,10 @@ resource "aws_s3_bucket" "object_bucket" {
 }
 
 resource "aws_s3_bucket_object" "object" {
-  bucket  = aws_s3_bucket.object_bucket.bucket
+  bucket  = "${aws_s3_bucket.object_bucket.bucket}"
   key     = "test-key"
-  content = %[2]q
-  acl     = %[3]q
+  content = "%s"
+  acl     = "%s"
 }
 `, randInt, content, acl)
 }
@@ -1451,14 +1350,14 @@ resource "aws_s3_bucket_object" "object" {
 func testAccAWSS3BucketObjectConfig_storageClass(randInt int, storage_class string) string {
 	return fmt.Sprintf(`
 resource "aws_s3_bucket" "object_bucket" {
-  bucket = "tf-object-test-bucket-%[1]d"
+  bucket = "tf-object-test-bucket-%d"
 }
 
 resource "aws_s3_bucket_object" "object" {
-  bucket        = aws_s3_bucket.object_bucket.bucket
+  bucket        = "${aws_s3_bucket.object_bucket.bucket}"
   key           = "test-key"
   content       = "some_bucket_content"
-  storage_class = %[2]q
+  storage_class = "%s"
 }
 `, randInt, storage_class)
 }
@@ -1466,7 +1365,7 @@ resource "aws_s3_bucket_object" "object" {
 func testAccAWSS3BucketObjectConfig_withTags(randInt int, key, content string) string {
 	return fmt.Sprintf(`
 resource "aws_s3_bucket" "object_bucket" {
-  bucket = "tf-object-test-bucket-%[1]d"
+  bucket = "tf-object-test-bucket-%d"
 
   versioning {
     enabled = true
@@ -1474,9 +1373,9 @@ resource "aws_s3_bucket" "object_bucket" {
 }
 
 resource "aws_s3_bucket_object" "object" {
-  bucket  = aws_s3_bucket.object_bucket.bucket
-  key     = %[2]q
-  content = %[3]q
+  bucket  = "${aws_s3_bucket.object_bucket.bucket}"
+  key     = "%s"
+  content = "%s"
 
   tags = {
     Key1 = "AAA"
@@ -1490,7 +1389,7 @@ resource "aws_s3_bucket_object" "object" {
 func testAccAWSS3BucketObjectConfig_withUpdatedTags(randInt int, key, content string) string {
 	return fmt.Sprintf(`
 resource "aws_s3_bucket" "object_bucket" {
-  bucket = "tf-object-test-bucket-%[1]d"
+  bucket = "tf-object-test-bucket-%d"
 
   versioning {
     enabled = true
@@ -1498,9 +1397,9 @@ resource "aws_s3_bucket" "object_bucket" {
 }
 
 resource "aws_s3_bucket_object" "object" {
-  bucket  = aws_s3_bucket.object_bucket.bucket
-  key     = %[2]q
-  content = %[3]q
+  bucket  = "${aws_s3_bucket.object_bucket.bucket}"
+  key     = "%s"
+  content = "%s"
 
   tags = {
     Key2 = "BBB"
@@ -1515,7 +1414,7 @@ resource "aws_s3_bucket_object" "object" {
 func testAccAWSS3BucketObjectConfig_withNoTags(randInt int, key, content string) string {
 	return fmt.Sprintf(`
 resource "aws_s3_bucket" "object_bucket" {
-  bucket = "tf-object-test-bucket-%[1]d"
+  bucket = "tf-object-test-bucket-%d"
 
   versioning {
     enabled = true
@@ -1523,9 +1422,9 @@ resource "aws_s3_bucket" "object_bucket" {
 }
 
 resource "aws_s3_bucket_object" "object" {
-  bucket  = aws_s3_bucket.object_bucket.bucket
-  key     = %[2]q
-  content = %[3]q
+  bucket  = "${aws_s3_bucket.object_bucket.bucket}"
+  key     = "%s"
+  content = "%s"
 }
 `, randInt, key, content)
 }
@@ -1533,12 +1432,12 @@ resource "aws_s3_bucket_object" "object" {
 func testAccAWSS3BucketObjectConfig_withMetadata(randInt int, metadataKey1, metadataValue1, metadataKey2, metadataValue2 string) string {
 	return fmt.Sprintf(`
 resource "aws_s3_bucket" "object_bucket" {
-  bucket = "tf-object-test-bucket-%[1]d"
+  bucket = "tf-object-test-bucket-%d"
 }
 
 resource "aws_s3_bucket_object" "object" {
-  bucket = aws_s3_bucket.object_bucket.bucket
-  key    = "test-key"
+  bucket  = "${aws_s3_bucket.object_bucket.bucket}"
+  key     = "test-key"
 
   metadata = {
     %[2]s = %[3]q
@@ -1551,21 +1450,19 @@ resource "aws_s3_bucket_object" "object" {
 func testAccAWSS3BucketObjectConfig_noObjectLockLegalHold(randInt int, content string) string {
 	return fmt.Sprintf(`
 resource "aws_s3_bucket" "object_bucket" {
-  bucket = "tf-object-test-bucket-%[1]d"
-
+  bucket = "tf-object-test-bucket-%d"
   versioning {
     enabled = true
   }
-
   object_lock_configuration {
     object_lock_enabled = "Enabled"
   }
 }
 
 resource "aws_s3_bucket_object" "object" {
-  bucket        = aws_s3_bucket.object_bucket.bucket
-  key           = "test-key"
-  content       = %[2]q
+  bucket = "${aws_s3_bucket.object_bucket.bucket}"
+  key = "test-key"
+  content = "%s"
   force_destroy = true
 }
 `, randInt, content)
@@ -1574,23 +1471,21 @@ resource "aws_s3_bucket_object" "object" {
 func testAccAWSS3BucketObjectConfig_withObjectLockLegalHold(randInt int, content, legalHoldStatus string) string {
 	return fmt.Sprintf(`
 resource "aws_s3_bucket" "object_bucket" {
-  bucket = "tf-object-test-bucket-%[1]d"
-
+  bucket = "tf-object-test-bucket-%d"
   versioning {
     enabled = true
   }
-
   object_lock_configuration {
     object_lock_enabled = "Enabled"
   }
 }
 
 resource "aws_s3_bucket_object" "object" {
-  bucket                        = aws_s3_bucket.object_bucket.bucket
-  key                           = "test-key"
-  content                       = %[2]q
-  object_lock_legal_hold_status = %[3]q
-  force_destroy                 = true
+  bucket = "${aws_s3_bucket.object_bucket.bucket}"
+  key = "test-key"
+  content = "%s"
+  object_lock_legal_hold_status = "%s"
+  force_destroy = true
 }
 `, randInt, content, legalHoldStatus)
 }
@@ -1598,21 +1493,19 @@ resource "aws_s3_bucket_object" "object" {
 func testAccAWSS3BucketObjectConfig_noObjectLockRetention(randInt int, content string) string {
 	return fmt.Sprintf(`
 resource "aws_s3_bucket" "object_bucket" {
-  bucket = "tf-object-test-bucket-%[1]d"
-
+  bucket = "tf-object-test-bucket-%d"
   versioning {
     enabled = true
   }
-
   object_lock_configuration {
     object_lock_enabled = "Enabled"
   }
 }
 
 resource "aws_s3_bucket_object" "object" {
-  bucket        = aws_s3_bucket.object_bucket.bucket
-  key           = "test-key"
-  content       = %[2]q
+  bucket = "${aws_s3_bucket.object_bucket.bucket}"
+  key = "test-key"
+  content = "%s"
   force_destroy = true
 }
 `, randInt, content)
@@ -1621,87 +1514,57 @@ resource "aws_s3_bucket_object" "object" {
 func testAccAWSS3BucketObjectConfig_withObjectLockRetention(randInt int, content, retainUntilDate string) string {
 	return fmt.Sprintf(`
 resource "aws_s3_bucket" "object_bucket" {
-  bucket = "tf-object-test-bucket-%[1]d"
-
+  bucket = "tf-object-test-bucket-%d"
   versioning {
     enabled = true
   }
-
   object_lock_configuration {
     object_lock_enabled = "Enabled"
   }
 }
 
 resource "aws_s3_bucket_object" "object" {
-  bucket                        = aws_s3_bucket.object_bucket.bucket
-  key                           = "test-key"
-  content                       = %[2]q
-  force_destroy                 = true
-  object_lock_mode              = "GOVERNANCE"
-  object_lock_retain_until_date = %[3]q
+  bucket = "${aws_s3_bucket.object_bucket.bucket}"
+  key = "test-key"
+  content = "%s"
+  force_destroy = true
+  object_lock_mode = "GOVERNANCE"
+  object_lock_retain_until_date = "%s"
 }
 `, randInt, content, retainUntilDate)
 }
 
 func testAccAWSS3BucketObjectConfig_NonVersioned(randInt int, source string) string {
 	policy := `{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "AllowYeah",
-      "Effect": "Allow",
-      "Action": "s3:*",
-      "Resource": "*"
-    },
-    {
-      "Sid": "DenyStm1",
-      "Effect": "Deny",
-      "Action": [
-        "s3:GetObjectVersion*",
-        "s3:ListBucketVersions"
-      ],
-      "Resource": "*"
-    }
-  ]
-}`
-
+		"Version": "2012-10-17",
+		"Statement": [
+			{
+				"Sid": "AllowYeah",
+				"Effect": "Allow",
+				"Action": "s3:*",
+				"Resource": "*"
+			},
+			{
+				"Sid":    "DenyStm1",
+				"Effect": "Deny",
+				"Action": [
+					"s3:GetObjectVersion*",
+					"s3:ListBucketVersions"
+				],
+				"Resource": "*"
+			}
+		]
+	}`
 	return testAccProviderConfigAssumeRolePolicy(policy) + fmt.Sprintf(`
 resource "aws_s3_bucket" "object_bucket_3" {
-  bucket = "tf-object-test-bucket-%[1]d"
-}
-
-resource "aws_s3_bucket_object" "object" {
-  bucket = aws_s3_bucket.object_bucket_3.bucket
-  key    = "updateable-key"
-  source = %[2]q
-  etag   = filemd5(%[2]q)
-}
-`, randInt, source)
-}
-
-func testAccAWSS3BucketObjectConfig_defaultBucketSSE(randInt int, content string) string {
-	return fmt.Sprintf(`
-resource "aws_kms_key" "test" {
-  description             = "Encrypts test bucket objects"
-  deletion_window_in_days = 7
-}
-
-resource "aws_s3_bucket" "object_bucket" {
   bucket = "tf-object-test-bucket-%d"
-  server_side_encryption_configuration {
-    rule {
-      apply_server_side_encryption_by_default {
-        kms_master_key_id = aws_kms_key.test.arn
-        sse_algorithm     = "aws:kms"
-      }
-    }
-  }
 }
 
 resource "aws_s3_bucket_object" "object" {
-  bucket  = aws_s3_bucket.object_bucket.bucket
-  key     = "test-key"
-  content = %q
+  bucket = "${aws_s3_bucket.object_bucket_3.bucket}"
+  key    = "updateable-key"
+  source = "%s"
+  etag   = "${filemd5("%s")}"
 }
-`, randInt, content)
+`, randInt, source, source)
 }

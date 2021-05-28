@@ -1,35 +1,22 @@
 package aws
 
 import (
-	"bytes"
-	"context"
 	"fmt"
 	"log"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/hashicorp/terraform-plugin-sdk/helper/customdiff"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/elb"
 	"github.com/aws/aws-sdk-go/service/elbv2"
-	"github.com/hashicorp/aws-sdk-go-base/tfawserr"
-	"github.com/hashicorp/go-cty/cty"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/customdiff"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
-	"github.com/terraform-providers/terraform-provider-aws/aws/internal/experimental/nullable"
-	"github.com/terraform-providers/terraform-provider-aws/aws/internal/hashcode"
-	"github.com/terraform-providers/terraform-provider-aws/aws/internal/keyvaluetags"
-	"github.com/terraform-providers/terraform-provider-aws/aws/internal/service/autoscaling/waiter"
-)
-
-const (
-	autoscalingTagResourceTypeAutoScalingGroup = `auto-scaling-group`
 )
 
 func resourceAwsAutoscalingGroup() *schema.Resource {
@@ -108,37 +95,43 @@ func resourceAwsAutoscalingGroup() *schema.Resource {
 							Type:     schema.TypeList,
 							Optional: true,
 							MaxItems: 1,
-							Computed: true,
-							// Ideally we'd want to detect drift detection,
-							// but a DiffSuppressFunc here does not behave nicely
-							// for detecting missing configuration blocks
+							// Ignore missing configuration block
+							DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+								if old == "1" && new == "0" {
+									return true
+								}
+								return false
+							},
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
-									// These fields are returned from calls to the API
-									// even if not provided at input time and can be omitted in requests;
-									// thus, to prevent non-empty plans, we set these
-									// to Computed and remove Defaults
 									"on_demand_allocation_strategy": {
 										Type:     schema.TypeString,
 										Optional: true,
-										Computed: true,
+										Default:  "prioritized",
+										// Reference: https://github.com/hashicorp/terraform/issues/18027
+										// ValidateFunc: validation.StringInSlice([]string{
+										// 	"prioritized",
+										// }, false),
 									},
 									"on_demand_base_capacity": {
 										Type:         schema.TypeInt,
 										Optional:     true,
-										Computed:     true,
 										ValidateFunc: validation.IntAtLeast(0),
 									},
 									"on_demand_percentage_above_base_capacity": {
 										Type:         schema.TypeInt,
 										Optional:     true,
-										Computed:     true,
+										Default:      100,
 										ValidateFunc: validation.IntBetween(0, 100),
 									},
 									"spot_allocation_strategy": {
 										Type:     schema.TypeString,
 										Optional: true,
-										Computed: true,
+										Default:  "lowest-price",
+										// Reference: https://github.com/hashicorp/terraform/issues/18027
+										// ValidateFunc: validation.StringInSlice([]string{
+										// 	"lowest-price",
+										// }, false),
 									},
 									"spot_instance_pools": {
 										Type:         schema.TypeInt,
@@ -209,11 +202,6 @@ func resourceAwsAutoscalingGroup() *schema.Resource {
 				},
 			},
 
-			"capacity_rebalance": {
-				Type:     schema.TypeBool,
-				Optional: true,
-			},
-
 			"desired_capacity": {
 				Type:     schema.TypeInt,
 				Optional: true,
@@ -265,11 +253,12 @@ func resourceAwsAutoscalingGroup() *schema.Resource {
 			},
 
 			"availability_zones": {
-				Type:          schema.TypeSet,
-				Optional:      true,
-				Computed:      true,
-				Elem:          &schema.Schema{Type: schema.TypeString},
-				ConflictsWith: []string{"vpc_zone_identifier"},
+				Type:             schema.TypeSet,
+				Optional:         true,
+				Computed:         true,
+				Elem:             &schema.Schema{Type: schema.TypeString},
+				Set:              schema.HashString,
+				DiffSuppressFunc: suppressAutoscalingGroupAvailabilityZoneDiffs,
 			},
 
 			"placement_group": {
@@ -277,20 +266,22 @@ func resourceAwsAutoscalingGroup() *schema.Resource {
 				Optional: true,
 			},
 
+			// DEPRECATED: Computed: true should be removed in a major version release
+			// Reference: https://github.com/terraform-providers/terraform-provider-aws/issues/9513
 			"load_balancers": {
 				Type:     schema.TypeSet,
 				Optional: true,
+				Computed: true,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 				Set:      schema.HashString,
 			},
 
 			"vpc_zone_identifier": {
-				Type:          schema.TypeSet,
-				Optional:      true,
-				Computed:      true,
-				ConflictsWith: []string{"availability_zones"},
-				Elem:          &schema.Schema{Type: schema.TypeString},
-				Set:           schema.HashString,
+				Type:     schema.TypeSet,
+				Optional: true,
+				Computed: true,
+				Elem:     &schema.Schema{Type: schema.TypeString},
+				Set:      schema.HashString,
 			},
 
 			"termination_policies": {
@@ -349,9 +340,12 @@ func resourceAwsAutoscalingGroup() *schema.Resource {
 				Default:  false,
 			},
 
+			// DEPRECATED: Computed: true should be removed in a major version release
+			// Reference: https://github.com/terraform-providers/terraform-provider-aws/issues/9513
 			"target_group_arns": {
 				Type:     schema.TypeSet,
 				Optional: true,
+				Computed: true,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 				Set:      schema.HashString,
 			},
@@ -399,82 +393,13 @@ func resourceAwsAutoscalingGroup() *schema.Resource {
 				},
 			},
 
-			"tag": {
-				Type:     schema.TypeSet,
-				Optional: true,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"key": {
-							Type:     schema.TypeString,
-							Required: true,
-						},
-
-						"value": {
-							Type:     schema.TypeString,
-							Required: true,
-						},
-
-						"propagate_at_launch": {
-							Type:     schema.TypeBool,
-							Required: true,
-						},
-					},
-				},
-				// This should be removable, but wait until other tags work is being done.
-				Set: func(v interface{}) int {
-					var buf bytes.Buffer
-					m := v.(map[string]interface{})
-					buf.WriteString(fmt.Sprintf("%s-", m["key"].(string)))
-					buf.WriteString(fmt.Sprintf("%s-", m["value"].(string)))
-					buf.WriteString(fmt.Sprintf("%t-", m["propagate_at_launch"].(bool)))
-
-					return hashcode.String(buf.String())
-				},
-			},
+			"tag": autoscalingTagSchema(),
 
 			"tags": {
-				Type:     schema.TypeSet,
-				Optional: true,
-				Elem: &schema.Schema{
-					Type: schema.TypeMap,
-					Elem: &schema.Schema{Type: schema.TypeString},
-				},
+				Type:          schema.TypeList,
+				Optional:      true,
+				Elem:          &schema.Schema{Type: schema.TypeMap},
 				ConflictsWith: []string{"tag"},
-				// Terraform 0.11 and earlier can provide incorrect type
-				// information during difference handling, in which boolean
-				// values are represented as "0" and "1". This Set function
-				// normalizes these hashing variations, while the Terraform
-				// Plugin SDK automatically suppresses the boolean/string
-				// difference in the value itself.
-				Set: func(v interface{}) int {
-					var buf bytes.Buffer
-
-					m, ok := v.(map[string]interface{})
-
-					if !ok {
-						return 0
-					}
-
-					if v, ok := m["key"].(string); ok {
-						buf.WriteString(fmt.Sprintf("%s-", v))
-					}
-
-					if v, ok := m["value"].(string); ok {
-						buf.WriteString(fmt.Sprintf("%s-", v))
-					}
-
-					if v, ok := m["propagate_at_launch"].(bool); ok {
-						buf.WriteString(fmt.Sprintf("%t-", v))
-					} else if v, ok := m["propagate_at_launch"].(string); ok {
-						if b, err := strconv.ParseBool(v); err == nil {
-							buf.WriteString(fmt.Sprintf("%t-", b))
-						} else {
-							buf.WriteString(fmt.Sprintf("%s-", v))
-						}
-					}
-
-					return hashcode.String(buf.String())
-				},
 			},
 
 			"service_linked_role_arn": {
@@ -482,57 +407,13 @@ func resourceAwsAutoscalingGroup() *schema.Resource {
 				Optional: true,
 				Computed: true,
 			},
-
-			"instance_refresh": {
-				Type:     schema.TypeList,
-				MaxItems: 1,
-				Optional: true,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"strategy": {
-							Type:         schema.TypeString,
-							Required:     true,
-							ValidateFunc: validation.StringInSlice(autoscaling.RefreshStrategy_Values(), false),
-						},
-						"preferences": {
-							Type:     schema.TypeList,
-							MaxItems: 1,
-							Optional: true,
-							Elem: &schema.Resource{
-								Schema: map[string]*schema.Schema{
-									"instance_warmup": {
-										Type:         nullable.TypeNullableInt,
-										Optional:     true,
-										ValidateFunc: nullable.ValidateTypeStringNullableIntAtLeast(0),
-									},
-									"min_healthy_percentage": {
-										Type:         schema.TypeInt,
-										Optional:     true,
-										Default:      90,
-										ValidateFunc: validation.IntBetween(0, 100),
-									},
-								},
-							},
-						},
-						"triggers": {
-							Type:     schema.TypeSet,
-							Optional: true,
-							Set:      schema.HashString,
-							Elem: &schema.Schema{
-								Type:             schema.TypeString,
-								ValidateDiagFunc: validateAutoScalingGroupInstanceRefreshTriggerFields,
-							},
-						},
-					},
-				},
-			},
 		},
 
 		CustomizeDiff: customdiff.Sequence(
-			customdiff.ComputedIf("launch_template.0.id", func(_ context.Context, diff *schema.ResourceDiff, meta interface{}) bool {
+			customdiff.ComputedIf("launch_template.0.id", func(diff *schema.ResourceDiff, meta interface{}) bool {
 				return diff.HasChange("launch_template.0.name")
 			}),
-			customdiff.ComputedIf("launch_template.0.name", func(_ context.Context, diff *schema.ResourceDiff, meta interface{}) bool {
+			customdiff.ComputedIf("launch_template.0.name", func(diff *schema.ResourceDiff, meta interface{}) bool {
 				return diff.HasChange("launch_template.0.id")
 			}),
 		),
@@ -633,7 +514,7 @@ func resourceAwsAutoscalingGroupCreate(d *schema.ResourceData, meta interface{})
 	launchTemplateValue, launchTemplateOk := d.GetOk("launch_template")
 
 	if createOpts.MixedInstancesPolicy == nil && !launchConfigurationOk && !launchTemplateOk {
-		return fmt.Errorf("One of `launch_configuration`, `launch_template`, or `mixed_instances_policy` must be set for an Auto Scaling Group")
+		return fmt.Errorf("One of `launch_configuration`, `launch_template`, or `mixed_instances_policy` must be set for an autoscaling group")
 	}
 
 	if launchConfigurationOk {
@@ -650,28 +531,33 @@ func resourceAwsAutoscalingGroupCreate(d *schema.ResourceData, meta interface{})
 
 	// Availability Zones are optional if VPC Zone Identifier(s) are specified
 	if v, ok := d.GetOk("availability_zones"); ok && v.(*schema.Set).Len() > 0 {
-		createOpts.AvailabilityZones = expandStringSet(v.(*schema.Set))
+		createOpts.AvailabilityZones = expandStringList(v.(*schema.Set).List())
 	}
 
 	resourceID := d.Get("name").(string)
-
 	if v, ok := d.GetOk("tag"); ok {
-		createOpts.Tags = keyvaluetags.AutoscalingKeyValueTags(v, resourceID, autoscalingTagResourceTypeAutoScalingGroup).IgnoreAws().AutoscalingTags()
+		var err error
+		createOpts.Tags, err = autoscalingTagsFromMap(
+			setToMapByKey(v.(*schema.Set)), resourceID)
+		if err != nil {
+			return err
+		}
 	}
 
 	if v, ok := d.GetOk("tags"); ok {
-		createOpts.Tags = keyvaluetags.AutoscalingKeyValueTags(v, resourceID, autoscalingTagResourceTypeAutoScalingGroup).IgnoreAws().AutoscalingTags()
-	}
+		tags, err := autoscalingTagsFromList(v.([]interface{}), resourceID)
+		if err != nil {
+			return err
+		}
 
-	if v, ok := d.GetOk("capacity_rebalance"); ok {
-		createOpts.CapacityRebalance = aws.Bool(v.(bool))
+		createOpts.Tags = append(createOpts.Tags, tags...)
 	}
 
 	if v, ok := d.GetOk("default_cooldown"); ok {
 		createOpts.DefaultCooldown = aws.Int64(int64(v.(int)))
 	}
 
-	if v, ok := d.GetOk("health_check_type"); ok {
+	if v, ok := d.GetOk("health_check_type"); ok && v.(string) != "" {
 		createOpts.HealthCheckType = aws.String(v.(string))
 	}
 
@@ -684,7 +570,8 @@ func resourceAwsAutoscalingGroupCreate(d *schema.ResourceData, meta interface{})
 	}
 
 	if v, ok := d.GetOk("load_balancers"); ok && v.(*schema.Set).Len() > 0 {
-		createOpts.LoadBalancerNames = expandStringSet(v.(*schema.Set))
+		createOpts.LoadBalancerNames = expandStringList(
+			v.(*schema.Set).List())
 	}
 
 	if v, ok := d.GetOk("vpc_zone_identifier"); ok && v.(*schema.Set).Len() > 0 {
@@ -696,7 +583,7 @@ func resourceAwsAutoscalingGroupCreate(d *schema.ResourceData, meta interface{})
 	}
 
 	if v, ok := d.GetOk("target_group_arns"); ok && len(v.(*schema.Set).List()) > 0 {
-		createOpts.TargetGroupARNs = expandStringSet(v.(*schema.Set))
+		createOpts.TargetGroupARNs = expandStringList(v.(*schema.Set).List())
 	}
 
 	if v, ok := d.GetOk("service_linked_role_arn"); ok {
@@ -707,7 +594,7 @@ func resourceAwsAutoscalingGroupCreate(d *schema.ResourceData, meta interface{})
 		createOpts.MaxInstanceLifetime = aws.Int64(int64(v.(int)))
 	}
 
-	log.Printf("[DEBUG] Auto Scaling Group create configuration: %#v", createOpts)
+	log.Printf("[DEBUG] AutoScaling Group create configuration: %#v", createOpts)
 
 	// Retry for IAM eventual consistency
 	err := resource.Retry(1*time.Minute, func() *resource.RetryError {
@@ -728,11 +615,11 @@ func resourceAwsAutoscalingGroupCreate(d *schema.ResourceData, meta interface{})
 		_, err = conn.CreateAutoScalingGroup(&createOpts)
 	}
 	if err != nil {
-		return fmt.Errorf("Error creating Auto Scaling Group: %s", err)
+		return fmt.Errorf("Error creating AutoScaling Group: %s", err)
 	}
 
 	d.SetId(d.Get("name").(string))
-	log.Printf("[INFO] Auto Scaling Group ID: %s", d.Id())
+	log.Printf("[INFO] AutoScaling Group ID: %s", d.Id())
 
 	if twoPhases {
 		for _, hook := range generatePutLifecycleHookInputs(asgName, initialLifecycleHooks) {
@@ -743,7 +630,7 @@ func resourceAwsAutoscalingGroupCreate(d *schema.ResourceData, meta interface{})
 
 		_, err = conn.UpdateAutoScalingGroup(&updateOpts)
 		if err != nil {
-			return fmt.Errorf("Error setting Auto Scaling Group initial capacity: %s", err)
+			return fmt.Errorf("Error setting AutoScaling Group initial capacity: %s", err)
 		}
 	}
 
@@ -768,17 +655,15 @@ func resourceAwsAutoscalingGroupCreate(d *schema.ResourceData, meta interface{})
 	return resourceAwsAutoscalingGroupRead(d, meta)
 }
 
-// TODO: wrap all top-level error returns
 func resourceAwsAutoscalingGroupRead(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).autoscalingconn
-	ignoreTagsConfig := meta.(*AWSClient).IgnoreTagsConfig
 
 	g, err := getAwsAutoscalingGroup(d.Id(), conn)
 	if err != nil {
 		return err
 	}
 	if g == nil {
-		log.Printf("[WARN] Auto Scaling Group (%s) not found, removing from state", d.Id())
+		log.Printf("[WARN] Autoscaling Group (%s) not found, removing from state", d.Id())
 		d.SetId("")
 		return nil
 	}
@@ -788,7 +673,6 @@ func resourceAwsAutoscalingGroupRead(d *schema.ResourceData, meta interface{}) e
 	}
 
 	d.Set("arn", g.AutoScalingGroupARN)
-	d.Set("capacity_rebalance", g.CapacityRebalance)
 	d.Set("default_cooldown", g.DefaultCooldown)
 	d.Set("desired_capacity", g.DesiredCapacity)
 
@@ -831,31 +715,46 @@ func resourceAwsAutoscalingGroupRead(d *schema.ResourceData, meta interface{}) e
 		return fmt.Errorf("error setting suspended_processes: %s", err)
 	}
 
+	var tagList, tagsList []*autoscaling.TagDescription
 	var tagOk, tagsOk bool
 	var v interface{}
 
-	// Deprecated: In a future major version, this should always set all tags except those ignored.
-	//             Remove d.GetOk() and Only() handling.
 	if v, tagOk = d.GetOk("tag"); tagOk {
-		proposedStateTags := keyvaluetags.AutoscalingKeyValueTags(v, d.Id(), autoscalingTagResourceTypeAutoScalingGroup)
-
-		if err := d.Set("tag", keyvaluetags.AutoscalingKeyValueTags(g.Tags, d.Id(), autoscalingTagResourceTypeAutoScalingGroup).IgnoreAws().IgnoreConfig(ignoreTagsConfig).Only(proposedStateTags).AutoscalingListOfMap()); err != nil {
-			return fmt.Errorf("error setting tag: %w", err)
+		tags := setToMapByKey(v.(*schema.Set))
+		for _, t := range g.Tags {
+			if _, ok := tags[*t.Key]; ok {
+				tagList = append(tagList, t)
+			}
 		}
+		d.Set("tag", autoscalingTagDescriptionsToSlice(tagList))
 	}
 
 	if v, tagsOk = d.GetOk("tags"); tagsOk {
-		proposedStateTags := keyvaluetags.AutoscalingKeyValueTags(v, d.Id(), autoscalingTagResourceTypeAutoScalingGroup)
+		tags := map[string]struct{}{}
+		for _, tag := range v.([]interface{}) {
+			attr, ok := tag.(map[string]interface{})
+			if !ok {
+				continue
+			}
 
-		if err := d.Set("tags", keyvaluetags.AutoscalingKeyValueTags(g.Tags, d.Id(), autoscalingTagResourceTypeAutoScalingGroup).IgnoreAws().IgnoreConfig(ignoreTagsConfig).Only(proposedStateTags).AutoscalingListOfStringMap()); err != nil {
-			return fmt.Errorf("error setting tags: %w", err)
+			key, ok := attr["key"].(string)
+			if !ok {
+				continue
+			}
+
+			tags[key] = struct{}{}
 		}
+
+		for _, t := range g.Tags {
+			if _, ok := tags[*t.Key]; ok {
+				tagsList = append(tagsList, t)
+			}
+		}
+		d.Set("tags", autoscalingTagDescriptionsToSlice(tagsList))
 	}
 
 	if !tagOk && !tagsOk {
-		if err := d.Set("tag", keyvaluetags.AutoscalingKeyValueTags(g.Tags, d.Id(), autoscalingTagResourceTypeAutoScalingGroup).IgnoreAws().IgnoreConfig(ignoreTagsConfig).AutoscalingListOfMap()); err != nil {
-			return fmt.Errorf("error setting tag: %w", err)
-		}
+		d.Set("tag", autoscalingTagDescriptionsToSlice(g.Tags))
 	}
 
 	if err := d.Set("target_group_arns", flattenStringList(g.TargetGroupARNs)); err != nil {
@@ -959,7 +858,6 @@ func waitUntilAutoscalingGroupLoadBalancerTargetGroupsAdded(conn *autoscaling.Au
 func resourceAwsAutoscalingGroupUpdate(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).autoscalingconn
 	shouldWaitForCapacity := false
-	shouldRefreshInstances := false
 
 	opts := autoscaling.UpdateAutoScalingGroupInput{
 		AutoScalingGroupName: aws.String(d.Id()),
@@ -971,16 +869,6 @@ func resourceAwsAutoscalingGroupUpdate(d *schema.ResourceData, meta interface{})
 		opts.DefaultCooldown = aws.Int64(int64(d.Get("default_cooldown").(int)))
 	}
 
-	if d.HasChange("capacity_rebalance") {
-		// If the capacity rebalance field is set to null, we need to explicitly set
-		// it back to "false", or the API won't reset it for us.
-		if v, ok := d.GetOk("capacity_rebalance"); ok {
-			opts.CapacityRebalance = aws.Bool(v.(bool))
-		} else {
-			opts.CapacityRebalance = aws.Bool(false)
-		}
-	}
-
 	if d.HasChange("desired_capacity") {
 		opts.DesiredCapacity = aws.Int64(int64(d.Get("desired_capacity").(int)))
 		shouldWaitForCapacity = true
@@ -990,19 +878,16 @@ func resourceAwsAutoscalingGroupUpdate(d *schema.ResourceData, meta interface{})
 		if v, ok := d.GetOk("launch_configuration"); ok {
 			opts.LaunchConfigurationName = aws.String(v.(string))
 		}
-		shouldRefreshInstances = true
 	}
 
 	if d.HasChange("launch_template") {
 		if v, ok := d.GetOk("launch_template"); ok && len(v.([]interface{})) > 0 {
 			opts.LaunchTemplate, _ = expandLaunchTemplateSpecification(v.([]interface{}))
 		}
-		shouldRefreshInstances = true
 	}
 
 	if d.HasChange("mixed_instances_policy") {
 		opts.MixedInstancesPolicy = expandAutoScalingMixedInstancesPolicy(d.Get("mixed_instances_policy").([]interface{}))
-		shouldRefreshInstances = true
 	}
 
 	if d.HasChange("min_size") {
@@ -1033,7 +918,7 @@ func resourceAwsAutoscalingGroupUpdate(d *schema.ResourceData, meta interface{})
 
 	if d.HasChange("availability_zones") {
 		if v, ok := d.GetOk("availability_zones"); ok && v.(*schema.Set).Len() > 0 {
-			opts.AvailabilityZones = expandStringSet(v.(*schema.Set))
+			opts.AvailabilityZones = expandStringList(v.(*schema.Set).List())
 		}
 	}
 
@@ -1056,27 +941,23 @@ func resourceAwsAutoscalingGroupUpdate(d *schema.ResourceData, meta interface{})
 		opts.ServiceLinkedRoleARN = aws.String(d.Get("service_linked_role_arn").(string))
 	}
 
-	if d.HasChanges("tag", "tags") {
-		oTagRaw, nTagRaw := d.GetChange("tag")
-		oTagsRaw, nTagsRaw := d.GetChange("tags")
-
-		oTag := keyvaluetags.AutoscalingKeyValueTags(oTagRaw, d.Id(), autoscalingTagResourceTypeAutoScalingGroup)
-		oTags := keyvaluetags.AutoscalingKeyValueTags(oTagsRaw, d.Id(), autoscalingTagResourceTypeAutoScalingGroup)
-		oldTags := oTag.Merge(oTags).AutoscalingTags()
-
-		nTag := keyvaluetags.AutoscalingKeyValueTags(nTagRaw, d.Id(), autoscalingTagResourceTypeAutoScalingGroup)
-		nTags := keyvaluetags.AutoscalingKeyValueTags(nTagsRaw, d.Id(), autoscalingTagResourceTypeAutoScalingGroup)
-		newTags := nTag.Merge(nTags).AutoscalingTags()
-
-		if err := keyvaluetags.AutoscalingUpdateTags(conn, d.Id(), autoscalingTagResourceTypeAutoScalingGroup, oldTags, newTags); err != nil {
-			return fmt.Errorf("error updating tags for Auto Scaling Group (%s): %w", d.Id(), err)
-		}
+	if err := setAutoscalingTags(conn, d); err != nil {
+		return err
 	}
 
-	log.Printf("[DEBUG] Auto Scaling Group update configuration: %#v", opts)
+	if d.HasChange("tag") {
+		d.SetPartial("tag")
+	}
+
+	if d.HasChange("tags") {
+		d.SetPartial("tags")
+	}
+
+	log.Printf("[DEBUG] AutoScaling Group update configuration: %#v", opts)
 	_, err := conn.UpdateAutoScalingGroup(&opts)
 	if err != nil {
-		return fmt.Errorf("Error updating Auto Scaling Group: %s", err)
+		d.Partial(true)
+		return fmt.Errorf("Error updating Autoscaling group: %s", err)
 	}
 
 	if d.HasChange("load_balancers") {
@@ -1091,8 +972,8 @@ func resourceAwsAutoscalingGroupUpdate(d *schema.ResourceData, meta interface{})
 
 		os := o.(*schema.Set)
 		ns := n.(*schema.Set)
-		remove := expandStringSet(os.Difference(ns))
-		add := expandStringSet(ns.Difference(os))
+		remove := expandStringList(os.Difference(ns).List())
+		add := expandStringList(ns.Difference(os).List())
 
 		if len(remove) > 0 {
 			// API only supports removing 10 at a time
@@ -1112,11 +993,11 @@ func resourceAwsAutoscalingGroupUpdate(d *schema.ResourceData, meta interface{})
 				})
 
 				if err != nil {
-					return fmt.Errorf("error detaching Auto Scaling Group (%s) Load Balancers: %s", d.Id(), err)
+					return fmt.Errorf("error detaching AutoScaling Group (%s) Load Balancers: %s", d.Id(), err)
 				}
 
 				if err := waitUntilAutoscalingGroupLoadBalancersRemoved(conn, d.Id()); err != nil {
-					return fmt.Errorf("error describing Auto Scaling Group (%s) Load Balancers being removed: %s", d.Id(), err)
+					return fmt.Errorf("error describing AutoScaling Group (%s) Load Balancers being removed: %s", d.Id(), err)
 				}
 			}
 		}
@@ -1139,11 +1020,11 @@ func resourceAwsAutoscalingGroupUpdate(d *schema.ResourceData, meta interface{})
 				})
 
 				if err != nil {
-					return fmt.Errorf("error attaching Auto Scaling Group (%s) Load Balancers: %s", d.Id(), err)
+					return fmt.Errorf("error attaching AutoScaling Group (%s) Load Balancers: %s", d.Id(), err)
 				}
 
 				if err := waitUntilAutoscalingGroupLoadBalancersAdded(conn, d.Id()); err != nil {
-					return fmt.Errorf("error describing Auto Scaling Group (%s) Load Balancers being added: %s", d.Id(), err)
+					return fmt.Errorf("error describing AutoScaling Group (%s) Load Balancers being added: %s", d.Id(), err)
 				}
 			}
 		}
@@ -1161,8 +1042,8 @@ func resourceAwsAutoscalingGroupUpdate(d *schema.ResourceData, meta interface{})
 
 		os := o.(*schema.Set)
 		ns := n.(*schema.Set)
-		remove := expandStringSet(os.Difference(ns))
-		add := expandStringSet(ns.Difference(os))
+		remove := expandStringList(os.Difference(ns).List())
+		add := expandStringList(ns.Difference(os).List())
 
 		if len(remove) > 0 {
 			// AWS API only supports adding/removing 10 at a time
@@ -1181,11 +1062,11 @@ func resourceAwsAutoscalingGroupUpdate(d *schema.ResourceData, meta interface{})
 					TargetGroupARNs:      batch,
 				})
 				if err != nil {
-					return fmt.Errorf("Error updating Load Balancers Target Groups for Auto Scaling Group (%s), error: %s", d.Id(), err)
+					return fmt.Errorf("Error updating Load Balancers Target Groups for AutoScaling Group (%s), error: %s", d.Id(), err)
 				}
 
 				if err := waitUntilAutoscalingGroupLoadBalancerTargetGroupsRemoved(conn, d.Id()); err != nil {
-					return fmt.Errorf("error describing Auto Scaling Group (%s) Load Balancer Target Groups being removed: %s", d.Id(), err)
+					return fmt.Errorf("error describing AutoScaling Group (%s) Load Balancer Target Groups being removed: %s", d.Id(), err)
 				}
 			}
 
@@ -1208,57 +1089,31 @@ func resourceAwsAutoscalingGroupUpdate(d *schema.ResourceData, meta interface{})
 				})
 
 				if err != nil {
-					return fmt.Errorf("Error updating Load Balancers Target Groups for Auto Scaling Group (%s), error: %s", d.Id(), err)
+					return fmt.Errorf("Error updating Load Balancers Target Groups for AutoScaling Group (%s), error: %s", d.Id(), err)
 				}
 
 				if err := waitUntilAutoscalingGroupLoadBalancerTargetGroupsAdded(conn, d.Id()); err != nil {
-					return fmt.Errorf("error describing Auto Scaling Group (%s) Load Balancer Target Groups being added: %s", d.Id(), err)
+					return fmt.Errorf("error describing AutoScaling Group (%s) Load Balancer Target Groups being added: %s", d.Id(), err)
 				}
-			}
-		}
-	}
-
-	if instanceRefreshRaw, ok := d.GetOk("instance_refresh"); ok {
-		instanceRefresh := instanceRefreshRaw.([]interface{})
-		if !shouldRefreshInstances {
-			if len(instanceRefresh) > 0 && instanceRefresh[0] != nil {
-				m := instanceRefresh[0].(map[string]interface{})
-				attrsSet := m["triggers"].(*schema.Set)
-				attrs := attrsSet.List()
-				strs := make([]string, len(attrs))
-				for i, a := range attrs {
-					strs[i] = a.(string)
-				}
-				if attrsSet.Contains("tag") && !attrsSet.Contains("tags") {
-					strs = append(strs, "tags") // nozero
-				} else if !attrsSet.Contains("tag") && attrsSet.Contains("tags") {
-					strs = append(strs, "tag") // nozero
-				}
-				shouldRefreshInstances = d.HasChanges(strs...)
-			}
-		}
-		if shouldRefreshInstances {
-			if err := autoScalingGroupRefreshInstances(conn, d.Id(), instanceRefresh); err != nil {
-				return fmt.Errorf("failed to start instance refresh of Auto Scaling Group %s: %w", d.Id(), err)
 			}
 		}
 	}
 
 	if shouldWaitForCapacity {
 		if err := waitForASGCapacity(d, meta, capacitySatisfiedUpdate); err != nil {
-			return fmt.Errorf("error waiting for Auto Scaling Group Capacity: %w", err)
+			return fmt.Errorf("Error waiting for AutoScaling Group Capacity: %s", err)
 		}
 	}
 
 	if d.HasChange("enabled_metrics") {
 		if err := updateASGMetricsCollection(d, conn); err != nil {
-			return fmt.Errorf("Error updating Auto Scaling Group Metrics collection: %s", err)
+			return fmt.Errorf("Error updating AutoScaling Group Metrics collection: %s", err)
 		}
 	}
 
 	if d.HasChange("suspended_processes") {
 		if err := updateASGSuspendedProcesses(d, conn); err != nil {
-			return fmt.Errorf("Error updating Auto Scaling Group Suspended Processes: %s", err)
+			return fmt.Errorf("Error updating AutoScaling Group Suspended Processes: %s", err)
 		}
 	}
 
@@ -1268,7 +1123,7 @@ func resourceAwsAutoscalingGroupUpdate(d *schema.ResourceData, meta interface{})
 func resourceAwsAutoscalingGroupDelete(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).autoscalingconn
 
-	// Read the Auto Scaling Group first. If it doesn't exist, we're done.
+	// Read the autoscaling group first. If it doesn't exist, we're done.
 	// We need the group in order to check if there are instances attached.
 	// If so, we need to remove those first.
 	g, err := getAwsAutoscalingGroup(d.Id(), conn)
@@ -1276,7 +1131,7 @@ func resourceAwsAutoscalingGroupDelete(d *schema.ResourceData, meta interface{})
 		return err
 	}
 	if g == nil {
-		log.Printf("[WARN] Auto Scaling Group (%s) not found, removing from state", d.Id())
+		log.Printf("[WARN] Autoscaling Group (%s) not found, removing from state", d.Id())
 		return nil
 	}
 	if len(g.Instances) > 0 || *g.DesiredCapacity > 0 {
@@ -1285,7 +1140,7 @@ func resourceAwsAutoscalingGroupDelete(d *schema.ResourceData, meta interface{})
 		}
 	}
 
-	log.Printf("[DEBUG] Auto Scaling Group destroy: %v", d.Id())
+	log.Printf("[DEBUG] AutoScaling Group destroy: %v", d.Id())
 	deleteopts := autoscaling.DeleteAutoScalingGroupInput{
 		AutoScalingGroupName: aws.String(d.Id()),
 		ForceDelete:          aws.Bool(d.Get("force_delete").(bool)),
@@ -1319,7 +1174,7 @@ func resourceAwsAutoscalingGroupDelete(d *schema.ResourceData, meta interface{})
 		}
 	}
 	if err != nil {
-		return fmt.Errorf("Error deleting Auto Scaling Group: %s", err)
+		return fmt.Errorf("Error deleting autoscaling group: %s", err)
 	}
 
 	var group *autoscaling.Group
@@ -1338,19 +1193,17 @@ func resourceAwsAutoscalingGroupDelete(d *schema.ResourceData, meta interface{})
 		}
 	}
 	if err != nil {
-		return fmt.Errorf("Error deleting Auto Scaling Group: %s", err)
+		return fmt.Errorf("Error deleting autoscaling group: %s", err)
 	}
 	return nil
 }
 
-// TODO: make this a finder
-// TODO: this should return a NotFoundError if not found
 func getAwsAutoscalingGroup(asgName string, conn *autoscaling.AutoScaling) (*autoscaling.Group, error) {
 	describeOpts := autoscaling.DescribeAutoScalingGroupsInput{
 		AutoScalingGroupNames: []*string{aws.String(asgName)},
 	}
 
-	log.Printf("[DEBUG] Auto Scaling Group describe configuration: %#v", describeOpts)
+	log.Printf("[DEBUG] AutoScaling Group describe configuration: %#v", describeOpts)
 	describeGroups, err := conn.DescribeAutoScalingGroups(&describeOpts)
 	if err != nil {
 		autoscalingerr, ok := err.(awserr.Error)
@@ -1358,10 +1211,10 @@ func getAwsAutoscalingGroup(asgName string, conn *autoscaling.AutoScaling) (*aut
 			return nil, nil
 		}
 
-		return nil, fmt.Errorf("Error retrieving Auto Scaling Groups: %s", err)
+		return nil, fmt.Errorf("Error retrieving AutoScaling groups: %s", err)
 	}
 
-	// Search for the Auto Scaling Group
+	// Search for the autoscaling group
 	for idx, asc := range describeGroups.AutoScalingGroups {
 		if *asc.AutoScalingGroupName == asgName {
 			return describeGroups.AutoScalingGroups[idx], nil
@@ -1375,12 +1228,12 @@ func resourceAwsAutoscalingGroupDrain(d *schema.ResourceData, meta interface{}) 
 	conn := meta.(*AWSClient).autoscalingconn
 
 	if d.Get("force_delete").(bool) {
-		log.Printf("[DEBUG] Skipping Auto Scaling Group drain, force_delete was set.")
+		log.Printf("[DEBUG] Skipping ASG drain, force_delete was set.")
 		return nil
 	}
 
 	// First, set the capacity to zero so the group will drain
-	log.Printf("[DEBUG] Reducing Auto Scaling Group capacity to zero")
+	log.Printf("[DEBUG] Reducing autoscaling group capacity to zero")
 	opts := autoscaling.UpdateAutoScalingGroupInput{
 		AutoScalingGroupName: aws.String(d.Id()),
 		DesiredCapacity:      aws.Int64(0),
@@ -1391,7 +1244,7 @@ func resourceAwsAutoscalingGroupDrain(d *schema.ResourceData, meta interface{}) 
 		return fmt.Errorf("Error setting capacity to zero to drain: %s", err)
 	}
 
-	// Next, wait for the Auto Scaling Group to drain
+	// Next, wait for the autoscale group to drain
 	log.Printf("[DEBUG] Waiting for group to have zero instances")
 	var g *autoscaling.Group
 	err := resource.Retry(d.Timeout(schema.TimeoutDelete), func() *resource.RetryError {
@@ -1400,7 +1253,7 @@ func resourceAwsAutoscalingGroupDrain(d *schema.ResourceData, meta interface{}) 
 			return resource.NonRetryableError(err)
 		}
 		if g == nil {
-			log.Printf("[WARN] Auto Scaling Group (%s) not found, removing from state", d.Id())
+			log.Printf("[WARN] Autoscaling Group (%s) not found, removing from state", d.Id())
 			d.SetId("")
 			return nil
 		}
@@ -1415,14 +1268,14 @@ func resourceAwsAutoscalingGroupDrain(d *schema.ResourceData, meta interface{}) 
 	if isResourceTimeoutError(err) {
 		g, err = getAwsAutoscalingGroup(d.Id(), conn)
 		if err != nil {
-			return fmt.Errorf("Error getting Auto Scaling Group info when draining: %s", err)
+			return fmt.Errorf("Error getting autoscaling group info when draining: %s", err)
 		}
 		if g != nil && len(g.Instances) > 0 {
 			return fmt.Errorf("Group still has %d instances", len(g.Instances))
 		}
 	}
 	if err != nil {
-		return fmt.Errorf("Error draining Auto Scaling Group: %s", err)
+		return fmt.Errorf("Error draining autoscaling group: %s", err)
 	}
 	return nil
 }
@@ -1430,7 +1283,7 @@ func resourceAwsAutoscalingGroupDrain(d *schema.ResourceData, meta interface{}) 
 func enableASGSuspendedProcesses(d *schema.ResourceData, conn *autoscaling.AutoScaling) error {
 	props := &autoscaling.ScalingProcessQuery{
 		AutoScalingGroupName: aws.String(d.Id()),
-		ScalingProcesses:     expandStringSet(d.Get("suspended_processes").(*schema.Set)),
+		ScalingProcesses:     expandStringList(d.Get("suspended_processes").(*schema.Set).List()),
 	}
 
 	_, err := conn.SuspendProcesses(props)
@@ -1441,10 +1294,10 @@ func enableASGMetricsCollection(d *schema.ResourceData, conn *autoscaling.AutoSc
 	props := &autoscaling.EnableMetricsCollectionInput{
 		AutoScalingGroupName: aws.String(d.Id()),
 		Granularity:          aws.String(d.Get("metrics_granularity").(string)),
-		Metrics:              expandStringSet(d.Get("enabled_metrics").(*schema.Set)),
+		Metrics:              expandStringList(d.Get("enabled_metrics").(*schema.Set).List()),
 	}
 
-	log.Printf("[INFO] Enabling metrics collection for the Auto Scaling Group: %s", d.Id())
+	log.Printf("[INFO] Enabling metrics collection for the ASG: %s", d.Id())
 	_, metricsErr := conn.EnableMetricsCollection(props)
 	return metricsErr
 
@@ -1466,12 +1319,12 @@ func updateASGSuspendedProcesses(d *schema.ResourceData, conn *autoscaling.AutoS
 	if resumeProcesses.Len() != 0 {
 		props := &autoscaling.ScalingProcessQuery{
 			AutoScalingGroupName: aws.String(d.Id()),
-			ScalingProcesses:     expandStringSet(resumeProcesses),
+			ScalingProcesses:     expandStringList(resumeProcesses.List()),
 		}
 
 		_, err := conn.ResumeProcesses(props)
 		if err != nil {
-			return fmt.Errorf("Error Resuming Processes for Auto Scaling Group %q: %s", d.Id(), err)
+			return fmt.Errorf("Error Resuming Processes for ASG %q: %s", d.Id(), err)
 		}
 	}
 
@@ -1479,12 +1332,12 @@ func updateASGSuspendedProcesses(d *schema.ResourceData, conn *autoscaling.AutoS
 	if suspendedProcesses.Len() != 0 {
 		props := &autoscaling.ScalingProcessQuery{
 			AutoScalingGroupName: aws.String(d.Id()),
-			ScalingProcesses:     expandStringSet(suspendedProcesses),
+			ScalingProcesses:     expandStringList(suspendedProcesses.List()),
 		}
 
 		_, err := conn.SuspendProcesses(props)
 		if err != nil {
-			return fmt.Errorf("Error Suspending Processes for Auto Scaling Group %q: %s", d.Id(), err)
+			return fmt.Errorf("Error Suspending Processes for ASG %q: %s", d.Id(), err)
 		}
 	}
 
@@ -1509,12 +1362,12 @@ func updateASGMetricsCollection(d *schema.ResourceData, conn *autoscaling.AutoSc
 	if disableMetrics.Len() != 0 {
 		props := &autoscaling.DisableMetricsCollectionInput{
 			AutoScalingGroupName: aws.String(d.Id()),
-			Metrics:              expandStringSet(disableMetrics),
+			Metrics:              expandStringList(disableMetrics.List()),
 		}
 
 		_, err := conn.DisableMetricsCollection(props)
 		if err != nil {
-			return fmt.Errorf("Failure to Disable metrics collection types for Auto Scaling Group %s: %s", d.Id(), err)
+			return fmt.Errorf("Failure to Disable metrics collection types for ASG %s: %s", d.Id(), err)
 		}
 	}
 
@@ -1522,13 +1375,13 @@ func updateASGMetricsCollection(d *schema.ResourceData, conn *autoscaling.AutoSc
 	if enabledMetrics.Len() != 0 {
 		props := &autoscaling.EnableMetricsCollectionInput{
 			AutoScalingGroupName: aws.String(d.Id()),
-			Metrics:              expandStringSet(enabledMetrics),
+			Metrics:              expandStringList(enabledMetrics.List()),
 			Granularity:          aws.String(d.Get("metrics_granularity").(string)),
 		}
 
 		_, err := conn.EnableMetricsCollection(props)
 		if err != nil {
-			return fmt.Errorf("Failure to Enable metrics collection types for Auto Scaling Group %s: %s", d.Id(), err)
+			return fmt.Errorf("Failure to Enable metrics collection types for ASG %s: %s", d.Id(), err)
 		}
 	}
 
@@ -1594,8 +1447,8 @@ func getTargetGroupInstanceStates(g *autoscaling.Group, meta interface{}) (map[s
 
 func expandVpcZoneIdentifiers(list []interface{}) *string {
 	strs := make([]string, len(list))
-	for i, s := range list {
-		strs[i] = s.(string)
+	for _, s := range list {
+		strs = append(strs, s.(string))
 	}
 	return aws.String(strings.Join(strs, ","))
 }
@@ -1875,117 +1728,4 @@ func waitUntilAutoscalingGroupLoadBalancersRemoved(conn *autoscaling.AutoScaling
 	}
 
 	return nil
-}
-
-func createAutoScalingGroupInstanceRefreshInput(asgName string, l []interface{}) *autoscaling.StartInstanceRefreshInput {
-	if len(l) == 0 || l[0] == nil {
-		return nil
-	}
-
-	m := l[0].(map[string]interface{})
-
-	return &autoscaling.StartInstanceRefreshInput{
-		AutoScalingGroupName: aws.String(asgName),
-		Strategy:             aws.String(m["strategy"].(string)),
-		Preferences:          expandAutoScalingGroupInstanceRefreshPreferences(m["preferences"].([]interface{})),
-	}
-}
-
-func expandAutoScalingGroupInstanceRefreshPreferences(l []interface{}) *autoscaling.RefreshPreferences {
-	if len(l) == 0 || l[0] == nil {
-		return nil
-	}
-
-	m := l[0].(map[string]interface{})
-
-	refreshPreferences := &autoscaling.RefreshPreferences{}
-
-	if v, ok := m["instance_warmup"]; ok {
-		if v, null, _ := nullable.Int(v.(string)).Value(); !null {
-			refreshPreferences.InstanceWarmup = aws.Int64(v)
-		}
-	}
-
-	if v, ok := m["min_healthy_percentage"]; ok {
-		refreshPreferences.MinHealthyPercentage = aws.Int64(int64(v.(int)))
-	}
-
-	return refreshPreferences
-}
-
-func autoScalingGroupRefreshInstances(conn *autoscaling.AutoScaling, asgName string, refreshConfig []interface{}) error {
-	input := createAutoScalingGroupInstanceRefreshInput(asgName, refreshConfig)
-	err := resource.Retry(waiter.InstanceRefreshStartedTimeout, func() *resource.RetryError {
-		_, err := conn.StartInstanceRefresh(input)
-		if tfawserr.ErrCodeEquals(err, autoscaling.ErrCodeInstanceRefreshInProgressFault) {
-			cancelErr := cancelAutoscalingInstanceRefresh(conn, asgName)
-			if cancelErr != nil {
-				return resource.NonRetryableError(cancelErr)
-			}
-			return resource.RetryableError(err)
-		}
-		if err != nil {
-			return resource.NonRetryableError(err)
-		}
-		return nil
-	})
-	if isResourceTimeoutError(err) {
-		_, err = conn.StartInstanceRefresh(input)
-	}
-	if err != nil {
-		return fmt.Errorf("error starting Instance Refresh: %w", err)
-	}
-
-	return nil
-}
-
-func cancelAutoscalingInstanceRefresh(conn *autoscaling.AutoScaling, asgName string) error {
-	input := autoscaling.CancelInstanceRefreshInput{
-		AutoScalingGroupName: aws.String(asgName),
-	}
-	output, err := conn.CancelInstanceRefresh(&input)
-	if tfawserr.ErrCodeEquals(err, autoscaling.ErrCodeActiveInstanceRefreshNotFoundFault) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("error cancelling Instance Refresh on Auto Scaling Group (%s): %w", asgName, err)
-	}
-	if output == nil {
-		return fmt.Errorf("error cancelling Instance Refresh on Auto Scaling Group (%s): empty result", asgName)
-	}
-
-	_, err = waiter.InstanceRefreshCancelled(conn, asgName, aws.StringValue(output.InstanceRefreshId))
-	if err != nil {
-		return fmt.Errorf("error waiting for cancellation of Instance Refresh (%s) on Auto Scaling Group (%s): %w", aws.StringValue(output.InstanceRefreshId), asgName, err)
-	}
-
-	return nil
-}
-
-func validateAutoScalingGroupInstanceRefreshTriggerFields(i interface{}, path cty.Path) diag.Diagnostics {
-	v, ok := i.(string)
-	if !ok {
-		return diag.Errorf("expected type to be string")
-	}
-
-	if v == "launch_configuration" || v == "launch_template" || v == "mixed_instances_policy" {
-		return diag.Diagnostics{
-			diag.Diagnostic{
-				Severity: diag.Warning,
-				Summary:  fmt.Sprintf("'%s' always triggers an instance refresh and can be removed", v),
-			},
-		}
-	}
-
-	schema := resourceAwsAutoscalingGroup().Schema
-	for attr, attrSchema := range schema {
-		if v == attr {
-			if attrSchema.Computed && !attrSchema.Optional {
-				return diag.Errorf("'%s' is a read-only parameter and cannot be used to trigger an instance refresh", v)
-			}
-			return nil
-		}
-	}
-
-	return diag.Errorf("'%s' is not a recognized parameter name for aws_autoscaling_group", v)
 }

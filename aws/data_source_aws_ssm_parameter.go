@@ -8,7 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/aws/aws-sdk-go/service/ssm"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 func dataSourceAwsSsmParameter() *schema.Resource {
@@ -59,11 +59,11 @@ func dataAwsSsmParameterRead(d *schema.ResourceData, meta interface{}) error {
 	resp, err := ssmconn.GetParameter(paramInput)
 
 	if err != nil {
-		return fmt.Errorf("Error describing SSM parameter (%s): %w", name, err)
+		return fmt.Errorf("Error describing SSM parameter: %s", err)
 	}
 
 	param := resp.Parameter
-	d.SetId(aws.StringValue(param.Name))
+	d.SetId(*param.Name)
 
 	arn := arn.ARN{
 		Partition: meta.(*AWSClient).partition,

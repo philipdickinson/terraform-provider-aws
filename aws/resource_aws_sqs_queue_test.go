@@ -2,75 +2,17 @@ package aws
 
 import (
 	"fmt"
-	"log"
 	"regexp"
 	"testing"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/sqs"
-	"github.com/hashicorp/go-multierror"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 	awspolicy "github.com/jen20/awspolicyequivalence"
 )
-
-func init() {
-	resource.AddTestSweepers("aws_sqs_queue", &resource.Sweeper{
-		Name: "aws_sqs_queue",
-		F:    testSweepSqsQueues,
-		Dependencies: []string{
-			"aws_autoscaling_group",
-			"aws_cloudwatch_event_rule",
-			"aws_elastic_beanstalk_environment",
-			"aws_iot_topic_rule",
-			"aws_lambda_function",
-			"aws_s3_bucket",
-			"aws_sns_topic",
-		},
-	})
-}
-
-func testSweepSqsQueues(region string) error {
-	client, err := sharedClientForRegion(region)
-	if err != nil {
-		return fmt.Errorf("error getting client: %w", err)
-	}
-	conn := client.(*AWSClient).sqsconn
-	input := &sqs.ListQueuesInput{}
-	var sweeperErrs *multierror.Error
-
-	output, err := conn.ListQueues(input)
-	if testSweepSkipSweepError(err) {
-		log.Printf("[WARN] Skipping SQS Queues sweep for %s: %s", region, err)
-		return sweeperErrs.ErrorOrNil()
-	}
-	if err != nil {
-		sweeperErrs = multierror.Append(sweeperErrs, fmt.Errorf("error retrieving SQS Queues: %w", err))
-		return sweeperErrs
-	}
-
-	for _, queueUrl := range output.QueueUrls {
-		url := aws.StringValue(queueUrl)
-
-		log.Printf("[INFO] Deleting SQS Queue: %s", url)
-		_, err := conn.DeleteQueue(&sqs.DeleteQueueInput{
-			QueueUrl: aws.String(url),
-		})
-		if isAWSErr(err, sqs.ErrCodeQueueDoesNotExist, "") {
-			continue
-		}
-		if err != nil {
-			sweeperErr := fmt.Errorf("error deleting SQS Queue (%s): %w", url, err)
-			log.Printf("[ERROR] %s", sweeperErr)
-			sweeperErrs = multierror.Append(sweeperErrs, sweeperErr)
-			continue
-		}
-	}
-
-	return sweeperErrs.ErrorOrNil()
-}
 
 func TestAccAWSSQSQueue_basic(t *testing.T) {
 	var queueAttributes map[string]*string
@@ -229,6 +171,10 @@ func TestAccAWSSQSQueue_policy(t *testing.T) {
 	queueName := fmt.Sprintf("sqs-queue-%s", acctest.RandString(10))
 	topicName := fmt.Sprintf("sns-topic-%s", acctest.RandString(10))
 
+	expectedPolicyText := fmt.Sprintf(
+		`{"Version": "2012-10-17","Id": "sqspolicy","Statement":[{"Sid": "Stmt1451501026839","Effect": "Allow","Principal":"*","Action":"sqs:SendMessage","Resource":"arn:aws:sqs:us-west-2:470663696735:%s","Condition":{"ArnEquals":{"aws:SourceArn":"arn:aws:sns:us-west-2:470663696735:%s"}}}]}`,
+		topicName, queueName)
+
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProviders,
@@ -238,7 +184,7 @@ func TestAccAWSSQSQueue_policy(t *testing.T) {
 				Config: testAccAWSSQSConfig_PolicyFormat(topicName, queueName),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckAWSSQSQueueExists("aws_sqs_queue.test-email-events", &queueAttributes),
-					testAccCheckAWSSQSQueuePolicyAttribute(&queueAttributes, topicName, queueName),
+					testAccCheckAWSSQSQueuePolicyAttribute(&queueAttributes, expectedPolicyText),
 				),
 			},
 			{
@@ -481,13 +427,8 @@ func testAccCheckAWSSQSQueueDestroy(s *terraform.State) error {
 
 	return nil
 }
-func testAccCheckAWSSQSQueuePolicyAttribute(queueAttributes *map[string]*string, topicName, queueName string) resource.TestCheckFunc {
+func testAccCheckAWSSQSQueuePolicyAttribute(queueAttributes *map[string]*string, expectedPolicyText string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
-		accountID := testAccProvider.Meta().(*AWSClient).accountid
-
-		expectedPolicyFormat := `{"Version": "2012-10-17","Id": "sqspolicy","Statement":[{"Sid": "Stmt1451501026839","Effect": "Allow","Principal":"*","Action":"sqs:SendMessage","Resource":"arn:%[1]s:sqs:%[2]s:%[3]s:%[4]s","Condition":{"ArnEquals":{"aws:SourceArn":"arn:%[1]s:sns:%[2]s:%[3]s:%[5]s"}}}]}`
-		expectedPolicyText := fmt.Sprintf(expectedPolicyFormat, testAccGetPartition(), testAccGetRegion(), accountID, topicName, queueName)
-
 		var actualPolicyText string
 		for key, valuePointer := range *queueAttributes {
 			if key == "Policy" {
@@ -639,7 +580,7 @@ resource "aws_sqs_queue" "queue" {
 func testAccAWSSQSConfigWithRedrive(name string) string {
 	return fmt.Sprintf(`
 resource "aws_sqs_queue" "my_queue" {
-  name                       = "tftestqueuq-%[1]s"
+  name                       = "tftestqueuq-%s"
   delay_seconds              = 0
   visibility_timeout_seconds = 300
 
@@ -652,9 +593,9 @@ EOF
 }
 
 resource "aws_sqs_queue" "my_dead_letter_queue" {
-  name = "tfotherqueuq-%[1]s"
+  name = "tfotherqueuq-%s"
 }
-`, name)
+`, name, name)
 }
 
 func testAccAWSSQSConfig_PolicyFormat(queue, topic string) string {
@@ -668,18 +609,12 @@ variable "sqs_name" {
 }
 
 resource "aws_sns_topic" "test_topic" {
-  name = var.sns_name
+  name = "${var.sns_name}"
 }
 
-data "aws_partition" "current" {}
-
-data "aws_region" "current" {}
-
-data "aws_caller_identity" "current" {}
-
 resource "aws_sqs_queue" "test-email-events" {
-  name                       = var.sqs_name
-  depends_on                 = [aws_sns_topic.test_topic]
+  name                       = "${var.sqs_name}"
+  depends_on                 = ["aws_sns_topic.test_topic"]
   delay_seconds              = 90
   max_message_size           = 2048
   message_retention_seconds  = 86400
@@ -696,10 +631,10 @@ resource "aws_sqs_queue" "test-email-events" {
       "Effect": "Allow",
       "Principal": "*",
       "Action": "sqs:SendMessage",
-      "Resource": "arn:${data.aws_partition.current.partition}:sqs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${var.sqs_name}",
+      "Resource": "arn:aws:sqs:us-west-2:470663696735:${var.sqs_name}",
       "Condition": {
         "ArnEquals": {
-          "aws:SourceArn": "arn:${data.aws_partition.current.partition}:sns:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${var.sns_name}"
+          "aws:SourceArn": "arn:aws:sns:us-west-2:470663696735:${var.sns_name}"
         }
       }
     }
@@ -709,9 +644,9 @@ EOF
 }
 
 resource "aws_sns_topic_subscription" "test_queue_target" {
-  topic_arn = aws_sns_topic.test_topic.arn
+  topic_arn = "${aws_sns_topic.test_topic.arn}"
   protocol  = "sqs"
-  endpoint  = aws_sqs_queue.test-email-events.arn
+  endpoint  = "${aws_sqs_queue.test-email-events.arn}"
 }
 `, topic, queue)
 }

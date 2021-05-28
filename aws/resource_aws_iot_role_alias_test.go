@@ -6,17 +6,14 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go/service/iot"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccAWSIotRoleAlias_basic(t *testing.T) {
 	alias := acctest.RandomWithPrefix("RoleAlias-")
 	alias2 := acctest.RandomWithPrefix("RoleAlias2-")
-
-	resourceName := "aws_iot_role_alias.ra"
-	resourceName2 := "aws_iot_role_alias.ra2"
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
@@ -26,46 +23,51 @@ func TestAccAWSIotRoleAlias_basic(t *testing.T) {
 			{
 				Config: testAccAWSIotRoleAliasConfig(alias),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckAWSIotRoleAliasExists(resourceName),
-					testAccCheckResourceAttrRegionalARN(resourceName, "arn", "iot", fmt.Sprintf("rolealias/%s", alias)),
-					resource.TestCheckResourceAttr(resourceName, "credential_duration", "3600"),
+					testAccCheckAWSIotRoleAliasExists("aws_iot_role_alias.ra"),
+					testAccCheckResourceAttrRegionalARN("aws_iot_role_alias.ra", "arn", "iot", fmt.Sprintf("rolealias/%s", alias)),
+					resource.TestCheckResourceAttr(
+						"aws_iot_role_alias.ra", "credential_duration", "3600"),
 				),
 			},
 			{
 				Config: testAccAWSIotRoleAliasConfigUpdate1(alias, alias2),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckAWSIotRoleAliasExists(resourceName),
-					testAccCheckAWSIotRoleAliasExists(resourceName2),
-					testAccCheckResourceAttrRegionalARN(resourceName, "arn", "iot", fmt.Sprintf("rolealias/%s", alias)),
-					resource.TestCheckResourceAttr(resourceName, "credential_duration", "1800"),
+					testAccCheckAWSIotRoleAliasExists("aws_iot_role_alias.ra"),
+					testAccCheckAWSIotRoleAliasExists("aws_iot_role_alias.ra2"),
+					testAccCheckResourceAttrRegionalARN("aws_iot_role_alias.ra", "arn", "iot", fmt.Sprintf("rolealias/%s", alias)),
+					resource.TestCheckResourceAttr(
+						"aws_iot_role_alias.ra", "credential_duration", "1800"),
 				),
 			},
 			{
 				Config: testAccAWSIotRoleAliasConfigUpdate2(alias2),
-				Check:  resource.ComposeTestCheckFunc(testAccCheckAWSIotRoleAliasExists(resourceName2)),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckAWSIotRoleAliasExists("aws_iot_role_alias.ra2"),
+				),
 			},
 			{
 				Config: testAccAWSIotRoleAliasConfigUpdate3(alias2),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckAWSIotRoleAliasExists(resourceName2),
+					testAccCheckAWSIotRoleAliasExists("aws_iot_role_alias.ra2"),
 				),
 				ExpectError: regexp.MustCompile("Role alias .+? already exists for this account"),
 			},
 			{
 				Config: testAccAWSIotRoleAliasConfigUpdate4(alias2),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckAWSIotRoleAliasExists(resourceName2),
+					testAccCheckAWSIotRoleAliasExists("aws_iot_role_alias.ra2"),
 				),
 			},
 			{
 				Config: testAccAWSIotRoleAliasConfigUpdate5(alias2),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckAWSIotRoleAliasExists(resourceName2),
-					testAccMatchResourceAttrGlobalARN(resourceName2, "role_arn", "iam", regexp.MustCompile("role/rolebogus")),
+					testAccCheckAWSIotRoleAliasExists("aws_iot_role_alias.ra2"),
+					resource.TestMatchResourceAttr(
+						"aws_iot_role_alias.ra2", "role_arn", regexp.MustCompile(".+?bogus")),
 				),
 			},
 			{
-				ResourceName:      resourceName2,
+				ResourceName:      "aws_iot_role_alias.ra2",
 				ImportState:       true,
 				ImportStateVerify: true,
 			},
@@ -130,19 +132,16 @@ resource "aws_iam_role" "role" {
   "Version": "2012-10-17",
   "Statement": {
     "Effect": "Allow",
-    "Principal": {
-      "Service": "credentials.iot.amazonaws.com"
-    },
+    "Principal": {"Service": "credentials.iot.amazonaws.com"},
     "Action": "sts:AssumeRole"
   }
 }
 EOF
-
 }
 
 resource "aws_iot_role_alias" "ra" {
   alias    = "%s"
-  role_arn = aws_iam_role.role.arn
+  role_arn = "${aws_iam_role.role.arn}"
 }
 `, alias)
 }
@@ -157,25 +156,22 @@ resource "aws_iam_role" "role" {
   "Version": "2012-10-17",
   "Statement": {
     "Effect": "Allow",
-    "Principal": {
-      "Service": "credentials.iot.amazonaws.com"
-    },
+    "Principal": {"Service": "credentials.iot.amazonaws.com"},
     "Action": "sts:AssumeRole"
   }
 }
 EOF
-
 }
 
 resource "aws_iot_role_alias" "ra" {
   alias               = "%s"
-  role_arn            = aws_iam_role.role.arn
+  role_arn            = "${aws_iam_role.role.arn}"
   credential_duration = 1800
 }
 
 resource "aws_iot_role_alias" "ra2" {
   alias    = "%s"
-  role_arn = aws_iam_role.role.arn
+  role_arn = "${aws_iam_role.role.arn}"
 }
 `, alias, alias2)
 }
@@ -190,19 +186,16 @@ resource "aws_iam_role" "role" {
   "Version": "2012-10-17",
   "Statement": {
     "Effect": "Allow",
-    "Principal": {
-      "Service": "credentials.iot.amazonaws.com"
-    },
+    "Principal": {"Service": "credentials.iot.amazonaws.com"},
     "Action": "sts:AssumeRole"
   }
 }
 EOF
-
 }
 
 resource "aws_iot_role_alias" "ra2" {
   alias    = "%s"
-  role_arn = aws_iam_role.role.arn
+  role_arn = "${aws_iam_role.role.arn}"
 }
 `, alias2)
 }
@@ -217,24 +210,21 @@ resource "aws_iam_role" "role" {
   "Version": "2012-10-17",
   "Statement": {
     "Effect": "Allow",
-    "Principal": {
-      "Service": "credentials.iot.amazonaws.com"
-    },
+    "Principal": {"Service": "credentials.iot.amazonaws.com"},
     "Action": "sts:AssumeRole"
   }
 }
 EOF
-
 }
 
 resource "aws_iot_role_alias" "ra2" {
   alias    = "%s"
-  role_arn = aws_iam_role.role.arn
+  role_arn = "${aws_iam_role.role.arn}"
 }
 
 resource "aws_iot_role_alias" "ra3" {
   alias    = "%s"
-  role_arn = aws_iam_role.role.arn
+  role_arn = "${aws_iam_role.role.arn}"
 }
 `, alias2, alias2)
 }
@@ -249,14 +239,11 @@ resource "aws_iam_role" "role" {
   "Version": "2012-10-17",
   "Statement": {
     "Effect": "Allow",
-    "Principal": {
-      "Service": "credentials.iot.amazonaws.com"
-    },
+    "Principal": {"Service": "credentials.iot.amazonaws.com"},
     "Action": "sts:AssumeRole"
   }
 }
 EOF
-
 }
 
 resource "aws_iam_role" "role2" {
@@ -267,19 +254,16 @@ resource "aws_iam_role" "role2" {
   "Version": "2012-10-17",
   "Statement": {
     "Effect": "Allow",
-    "Principal": {
-      "Service": "credentials.iot.amazonaws.com"
-    },
+    "Principal": {"Service": "credentials.iot.amazonaws.com"},
     "Action": "sts:AssumeRole"
   }
 }
 EOF
-
 }
 
 resource "aws_iot_role_alias" "ra2" {
   alias    = "%s"
-  role_arn = aws_iam_role.role2.arn
+  role_arn = "${aws_iam_role.role2.arn}"
 }
 `, alias2)
 }
@@ -294,14 +278,11 @@ resource "aws_iam_role" "role" {
   "Version": "2012-10-17",
   "Statement": {
     "Effect": "Allow",
-    "Principal": {
-      "Service": "credentials.iot.amazonaws.com"
-    },
+    "Principal": {"Service": "credentials.iot.amazonaws.com"},
     "Action": "sts:AssumeRole"
   }
 }
 EOF
-
 }
 
 resource "aws_iam_role" "role2" {
@@ -312,14 +293,11 @@ resource "aws_iam_role" "role2" {
   "Version": "2012-10-17",
   "Statement": {
     "Effect": "Allow",
-    "Principal": {
-      "Service": "credentials.iot.amazonaws.com"
-    },
+    "Principal": {"Service": "credentials.iot.amazonaws.com"},
     "Action": "sts:AssumeRole"
   }
 }
 EOF
-
 }
 
 resource "aws_iot_role_alias" "ra2" {

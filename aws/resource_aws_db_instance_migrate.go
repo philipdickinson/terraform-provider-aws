@@ -1,9 +1,7 @@
 package aws
 
 import (
-	"context"
-
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 func resourceAwsDbInstanceResourceV0() *schema.Resource {
@@ -285,6 +283,7 @@ func resourceAwsDbInstanceResourceV0() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
+				Elem:     &schema.Schema{Type: schema.TypeString},
 			},
 
 			"auto_minor_version_upgrade": {
@@ -379,12 +378,7 @@ func resourceAwsDbInstanceResourceV0() *schema.Resource {
 	}
 }
 
-func resourceAwsDbInstanceStateUpgradeV0(_ context.Context, rawState map[string]interface{}, meta interface{}) (map[string]interface{}, error) {
-	if rawState == nil {
-		return nil, nil
-	}
-
+func resourceAwsDbInstanceStateUpgradeV0(rawState map[string]interface{}, meta interface{}) (map[string]interface{}, error) {
 	rawState["delete_automated_backups"] = true
-
 	return rawState, nil
 }

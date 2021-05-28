@@ -7,8 +7,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
 func resourceAwsIamPolicyAttachment() *schema.Resource {
@@ -57,9 +57,9 @@ func resourceAwsIamPolicyAttachmentCreate(d *schema.ResourceData, meta interface
 
 	name := d.Get("name").(string)
 	arn := d.Get("policy_arn").(string)
-	users := expandStringSet(d.Get("users").(*schema.Set))
-	roles := expandStringSet(d.Get("roles").(*schema.Set))
-	groups := expandStringSet(d.Get("groups").(*schema.Set))
+	users := expandStringList(d.Get("users").(*schema.Set).List())
+	roles := expandStringList(d.Get("roles").(*schema.Set).List())
+	groups := expandStringList(d.Get("groups").(*schema.Set).List())
 
 	if len(users) == 0 && len(roles) == 0 && len(groups) == 0 {
 		return fmt.Errorf("No Users, Roles, or Groups specified for IAM Policy Attachment %s", name)
@@ -161,9 +161,9 @@ func resourceAwsIamPolicyAttachmentDelete(d *schema.ResourceData, meta interface
 	conn := meta.(*AWSClient).iamconn
 	name := d.Get("name").(string)
 	arn := d.Get("policy_arn").(string)
-	users := expandStringSet(d.Get("users").(*schema.Set))
-	roles := expandStringSet(d.Get("roles").(*schema.Set))
-	groups := expandStringSet(d.Get("groups").(*schema.Set))
+	users := expandStringList(d.Get("users").(*schema.Set).List())
+	roles := expandStringList(d.Get("roles").(*schema.Set).List())
+	groups := expandStringList(d.Get("groups").(*schema.Set).List())
 
 	var userErr, roleErr, groupErr error
 	if len(users) != 0 {
@@ -239,8 +239,8 @@ func updateUsers(conn *iam.IAM, d *schema.ResourceData) error {
 	}
 	os := o.(*schema.Set)
 	ns := n.(*schema.Set)
-	remove := expandStringSet(os.Difference(ns))
-	add := expandStringSet(ns.Difference(os))
+	remove := expandStringList(os.Difference(ns).List())
+	add := expandStringList(ns.Difference(os).List())
 
 	if rErr := detachPolicyFromUsers(conn, remove, arn); rErr != nil {
 		return rErr
@@ -261,8 +261,8 @@ func updateRoles(conn *iam.IAM, d *schema.ResourceData) error {
 	}
 	os := o.(*schema.Set)
 	ns := n.(*schema.Set)
-	remove := expandStringSet(os.Difference(ns))
-	add := expandStringSet(ns.Difference(os))
+	remove := expandStringList(os.Difference(ns).List())
+	add := expandStringList(ns.Difference(os).List())
 
 	if rErr := detachPolicyFromRoles(conn, remove, arn); rErr != nil {
 		return rErr
@@ -283,8 +283,8 @@ func updateGroups(conn *iam.IAM, d *schema.ResourceData) error {
 	}
 	os := o.(*schema.Set)
 	ns := n.(*schema.Set)
-	remove := expandStringSet(os.Difference(ns))
-	add := expandStringSet(ns.Difference(os))
+	remove := expandStringList(os.Difference(ns).List())
+	add := expandStringList(ns.Difference(os).List())
 
 	if rErr := detachPolicyFromGroups(conn, remove, arn); rErr != nil {
 		return rErr

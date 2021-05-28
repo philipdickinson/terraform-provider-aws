@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
+
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/configservice"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
 func resourceAwsConfigConfigurationRecorder() *schema.Resource {
@@ -97,7 +99,7 @@ func resourceAwsConfigConfigurationRecorderRead(d *schema.ResourceData, meta int
 	}
 	out, err := conn.DescribeConfigurationRecorders(&input)
 	if err != nil {
-		if isAWSErr(err, configservice.ErrCodeNoSuchConfigurationRecorderException, "") {
+		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "NoSuchConfigurationRecorderException" {
 			log.Printf("[WARN] Configuration Recorder %q is gone (NoSuchConfigurationRecorderException)", d.Id())
 			d.SetId("")
 			return nil
@@ -140,9 +142,8 @@ func resourceAwsConfigConfigurationRecorderDelete(d *schema.ResourceData, meta i
 	}
 	_, err := conn.DeleteConfigurationRecorder(&input)
 	if err != nil {
-		if !isAWSErr(err, configservice.ErrCodeNoSuchConfigurationRecorderException, "") {
-			return fmt.Errorf("Deleting Configuration Recorder failed: %s", err)
-		}
+		return fmt.Errorf("Deleting Configuration Recorder failed: %s", err)
 	}
+
 	return nil
 }

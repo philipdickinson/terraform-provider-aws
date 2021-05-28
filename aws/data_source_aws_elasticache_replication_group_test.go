@@ -2,11 +2,10 @@ package aws
 
 import (
 	"fmt"
-	"regexp"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 )
 
 func TestAccDataSourceAwsElasticacheReplicationGroup_basic(t *testing.T) {
@@ -22,14 +21,12 @@ func TestAccDataSourceAwsElasticacheReplicationGroup_basic(t *testing.T) {
 				Config: testAccDataSourceAwsElasticacheReplicationGroupConfig_basic(rName),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr(dataSourceName, "auth_token_enabled", "false"),
-					resource.TestCheckResourceAttrPair(dataSourceName, "arn", resourceName, "arn"),
 					resource.TestCheckResourceAttrPair(dataSourceName, "automatic_failover_enabled", resourceName, "automatic_failover_enabled"),
 					resource.TestCheckResourceAttrPair(dataSourceName, "member_clusters.#", resourceName, "member_clusters.#"),
 					resource.TestCheckResourceAttrPair(dataSourceName, "node_type", resourceName, "node_type"),
 					resource.TestCheckResourceAttrPair(dataSourceName, "number_cache_clusters", resourceName, "number_cache_clusters"),
 					resource.TestCheckResourceAttrPair(dataSourceName, "port", resourceName, "port"),
 					resource.TestCheckResourceAttrPair(dataSourceName, "primary_endpoint_address", resourceName, "primary_endpoint_address"),
-					resource.TestCheckResourceAttrPair(dataSourceName, "reader_endpoint_address", resourceName, "reader_endpoint_address"),
 					resource.TestCheckResourceAttrPair(dataSourceName, "replication_group_description", resourceName, "replication_group_description"),
 					resource.TestCheckResourceAttrPair(dataSourceName, "replication_group_id", resourceName, "replication_group_id"),
 					resource.TestCheckResourceAttrPair(dataSourceName, "snapshot_window", resourceName, "snapshot_window"),
@@ -64,22 +61,10 @@ func TestAccDataSourceAwsElasticacheReplicationGroup_ClusterMode(t *testing.T) {
 	})
 }
 
-func TestAccDataSourceAwsElasticacheReplicationGroup_NonExistent(t *testing.T) {
-
-	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:  func() { testAccPreCheck(t) },
-		Providers: testAccProviders,
-		Steps: []resource.TestStep{
-			{
-				Config:      testAccDataSourceAwsElasticacheReplicationGroupConfig_NonExistent,
-				ExpectError: regexp.MustCompile(`couldn't find resource`),
-			},
-		},
-	})
-}
-
 func testAccDataSourceAwsElasticacheReplicationGroupConfig_basic(rName string) string {
-	return testAccAvailableAZsNoOptInConfig() + fmt.Sprintf(`
+	return fmt.Sprintf(`
+data "aws_availability_zones" "available" {}
+
 resource "aws_elasticache_replication_group" "test" {
   replication_group_id          = %[1]q
   replication_group_description = "test description"
@@ -117,9 +102,3 @@ data "aws_elasticache_replication_group" "test" {
 }
 `, rName)
 }
-
-const testAccDataSourceAwsElasticacheReplicationGroupConfig_NonExistent = `
-data "aws_elasticache_replication_group" "test" {
-  replication_group_id = "tf-acc-test-nonexistent"
-}
-`

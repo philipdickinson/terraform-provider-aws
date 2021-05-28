@@ -7,9 +7,9 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/guardduty"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func testAccAwsGuardDutyThreatintelset_basic(t *testing.T) {
@@ -18,8 +18,6 @@ func testAccAwsGuardDutyThreatintelset_basic(t *testing.T) {
 	keyName2 := fmt.Sprintf("tf-%s", acctest.RandString(5))
 	threatintelsetName1 := fmt.Sprintf("tf-%s", acctest.RandString(5))
 	threatintelsetName2 := fmt.Sprintf("tf-%s", acctest.RandString(5))
-	resourceName := "aws_guardduty_threatintelset.test"
-
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProviders,
@@ -28,35 +26,34 @@ func testAccAwsGuardDutyThreatintelset_basic(t *testing.T) {
 			{
 				Config: testAccGuardDutyThreatintelsetConfig_basic(bucketName, keyName1, threatintelsetName1, true),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckAwsGuardDutyThreatintelsetExists(resourceName),
-					testAccMatchResourceAttrRegionalARN(resourceName, "arn", "guardduty", regexp.MustCompile("detector/.+/threatintelset/.+$")),
-					resource.TestCheckResourceAttr(resourceName, "name", threatintelsetName1),
-					resource.TestCheckResourceAttr(resourceName, "activate", "true"),
-					resource.TestMatchResourceAttr(resourceName, "location", regexp.MustCompile(fmt.Sprintf("%s/%s$", bucketName, keyName1))),
-					resource.TestCheckResourceAttr(resourceName, "tags.%", "0"),
+					testAccCheckAwsGuardDutyThreatintelsetExists("aws_guardduty_threatintelset.test"),
+					resource.TestCheckResourceAttr("aws_guardduty_threatintelset.test", "name", threatintelsetName1),
+					resource.TestCheckResourceAttr("aws_guardduty_threatintelset.test", "activate", "true"),
+					resource.TestMatchResourceAttr(
+						"aws_guardduty_threatintelset.test", "location", regexp.MustCompile(fmt.Sprintf("%s/%s$", bucketName, keyName1)),
+					),
 				),
-			},
-			{
-				ResourceName:      resourceName,
-				ImportState:       true,
-				ImportStateVerify: true,
 			},
 			{
 				Config: testAccGuardDutyThreatintelsetConfig_basic(bucketName, keyName2, threatintelsetName2, false),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckAwsGuardDutyThreatintelsetExists(resourceName),
-					resource.TestCheckResourceAttr(resourceName, "name", threatintelsetName2),
-					resource.TestCheckResourceAttr(resourceName, "activate", "false"),
-					resource.TestMatchResourceAttr(resourceName, "location", regexp.MustCompile(fmt.Sprintf("%s/%s$", bucketName, keyName2))),
+					testAccCheckAwsGuardDutyThreatintelsetExists("aws_guardduty_threatintelset.test"),
+					resource.TestCheckResourceAttr("aws_guardduty_threatintelset.test", "name", threatintelsetName2),
+					resource.TestCheckResourceAttr("aws_guardduty_threatintelset.test", "activate", "false"),
+					resource.TestMatchResourceAttr(
+						"aws_guardduty_threatintelset.test", "location", regexp.MustCompile(fmt.Sprintf("%s/%s$", bucketName, keyName2)),
+					),
 				),
 			},
 		},
 	})
 }
 
-func testAccAwsGuardDutyThreatintelset_tags(t *testing.T) {
-	rName := acctest.RandomWithPrefix("tf-acc-test")
+func testAccAwsGuardDutyThreatintelset_import(t *testing.T) {
 	resourceName := "aws_guardduty_threatintelset.test"
+	bucketName := fmt.Sprintf("tf-test-%s", acctest.RandString(5))
+	keyName := fmt.Sprintf("tf-%s", acctest.RandString(5))
+	threatintelsetName := fmt.Sprintf("tf-%s", acctest.RandString(5))
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
@@ -64,34 +61,13 @@ func testAccAwsGuardDutyThreatintelset_tags(t *testing.T) {
 		CheckDestroy: testAccCheckAwsGuardDutyThreatintelsetDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccGuardDutyThreatintelsetConfigTags1(rName, "key1", "value1"),
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckAwsGuardDutyThreatintelsetExists(resourceName),
-					resource.TestCheckResourceAttr(resourceName, "tags.%", "1"),
-					resource.TestCheckResourceAttr(resourceName, "tags.key1", "value1"),
-				),
+				Config: testAccGuardDutyThreatintelsetConfig_basic(bucketName, keyName, threatintelsetName, true),
 			},
+
 			{
 				ResourceName:      resourceName,
 				ImportState:       true,
 				ImportStateVerify: true,
-			},
-			{
-				Config: testAccGuardDutyThreatintelsetConfigTags2(rName, "key1", "value1updated", "key2", "value2"),
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckAwsGuardDutyThreatintelsetExists(resourceName),
-					resource.TestCheckResourceAttr(resourceName, "tags.%", "2"),
-					resource.TestCheckResourceAttr(resourceName, "tags.key1", "value1updated"),
-					resource.TestCheckResourceAttr(resourceName, "tags.key2", "value2"),
-				),
-			},
-			{
-				Config: testAccGuardDutyThreatintelsetConfigTags1(rName, "key2", "value2"),
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckAwsGuardDutyThreatintelsetExists(resourceName),
-					resource.TestCheckResourceAttr(resourceName, "tags.%", "1"),
-					resource.TestCheckResourceAttr(resourceName, "tags.key2", "value2"),
-				),
 			},
 		},
 	})
@@ -157,7 +133,7 @@ func testAccCheckAwsGuardDutyThreatintelsetExists(name string) resource.TestChec
 
 func testAccGuardDutyThreatintelsetConfig_basic(bucketName, keyName, threatintelsetName string, activate bool) string {
 	return fmt.Sprintf(`
-resource "aws_guardduty_detector" "test" {}
+%s
 
 resource "aws_s3_bucket" "test" {
   acl           = "private"
@@ -168,79 +144,16 @@ resource "aws_s3_bucket" "test" {
 resource "aws_s3_bucket_object" "test" {
   acl     = "public-read"
   content = "10.0.0.0/8\n"
-  bucket  = aws_s3_bucket.test.id
+  bucket  = "${aws_s3_bucket.test.id}"
   key     = "%s"
 }
 
 resource "aws_guardduty_threatintelset" "test" {
   name        = "%s"
-  detector_id = aws_guardduty_detector.test.id
+  detector_id = "${aws_guardduty_detector.test.id}"
   format      = "TXT"
   location    = "https://s3.amazonaws.com/${aws_s3_bucket_object.test.bucket}/${aws_s3_bucket_object.test.key}"
   activate    = %t
 }
-`, bucketName, keyName, threatintelsetName, activate)
-}
-
-func testAccGuardDutyThreatintelsetConfigTags1(rName, tagKey1, tagValue1 string) string {
-	return fmt.Sprintf(`
-resource "aws_guardduty_detector" "test" {}
-
-resource "aws_s3_bucket" "test" {
-  acl           = "private"
-  bucket        = %[1]q
-  force_destroy = true
-}
-
-resource "aws_s3_bucket_object" "test" {
-  acl     = "public-read"
-  content = "10.0.0.0/8\n"
-  bucket  = aws_s3_bucket.test.id
-  key     = %[1]q
-}
-
-resource "aws_guardduty_threatintelset" "test" {
-  activate    = true
-  detector_id = aws_guardduty_detector.test.id
-  format      = "TXT"
-  location    = "https://s3.amazonaws.com/${aws_s3_bucket_object.test.bucket}/${aws_s3_bucket_object.test.key}"
-  name        = %[1]q
-
-  tags = {
-    %[2]q = %[3]q
-  }
-}
-`, rName, tagKey1, tagValue1)
-}
-
-func testAccGuardDutyThreatintelsetConfigTags2(rName, tagKey1, tagValue1, tagKey2, tagValue2 string) string {
-	return fmt.Sprintf(`
-resource "aws_guardduty_detector" "test" {}
-
-resource "aws_s3_bucket" "test" {
-  acl           = "private"
-  bucket        = %[1]q
-  force_destroy = true
-}
-
-resource "aws_s3_bucket_object" "test" {
-  acl     = "public-read"
-  content = "10.0.0.0/8\n"
-  bucket  = aws_s3_bucket.test.id
-  key     = %[1]q
-}
-
-resource "aws_guardduty_threatintelset" "test" {
-  activate    = true
-  detector_id = aws_guardduty_detector.test.id
-  format      = "TXT"
-  location    = "https://s3.amazonaws.com/${aws_s3_bucket_object.test.bucket}/${aws_s3_bucket_object.test.key}"
-  name        = %[1]q
-
-  tags = {
-    %[2]q = %[3]q
-    %[4]q = %[5]q
-  }
-}
-`, rName, tagKey1, tagValue1, tagKey2, tagValue2)
+`, testAccGuardDutyDetectorConfig_basic1, bucketName, keyName, threatintelsetName, activate)
 }

@@ -1,6 +1,6 @@
-variable "aws_region" {
-  default = "us-west-2"
-}
+#
+# Variables Configuration
+#
 
 variable "cluster-name" {
   default = "terraform-eks-demo"

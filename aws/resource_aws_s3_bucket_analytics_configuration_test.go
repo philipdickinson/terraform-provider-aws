@@ -10,9 +10,9 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func TestAccAWSS3BucketAnalyticsConfiguration_basic(t *testing.T) {
@@ -134,7 +134,7 @@ func TestAccAWSS3BucketAnalyticsConfiguration_WithFilter_Empty(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				Config:      testAccAWSS3BucketAnalyticsConfigurationWithEmptyFilter(rName, rName),
-				ExpectError: regexp.MustCompile(`one of .* must be specified`),
+				ExpectError: regexp.MustCompile(`config is invalid:`),
 			},
 		},
 	})
@@ -365,7 +365,7 @@ func TestAccAWSS3BucketAnalyticsConfiguration_WithStorageClassAnalysis_Empty(t *
 		Steps: []resource.TestStep{
 			{
 				Config:      testAccAWSS3BucketAnalyticsConfigurationWithEmptyStorageClassAnalysis(rName, rName),
-				ExpectError: regexp.MustCompile(`running pre-apply refresh`),
+				ExpectError: regexp.MustCompile(`config is invalid:`),
 			},
 		},
 	})
@@ -677,7 +677,6 @@ resource "aws_s3_bucket_analytics_configuration" "test" {
   storage_class_analysis {
     data_export {
       output_schema_version = "V_1"
-
       destination {
         s3_bucket_destination {
           format     = "CSV"
@@ -919,7 +918,7 @@ func TestExpandS3StorageClassAnalysis(t *testing.T) {
 								map[string]interface{}{
 									"s3_bucket_destination": []interface{}{
 										map[string]interface{}{
-											"bucket_arn":        "arn:aws:s3", //lintignore:AWSAT005
+											"bucket_arn":        "arn:aws:s3",
 											"bucket_account_id": "1234567890",
 											"format":            s3.AnalyticsS3ExportFileFormatCsv,
 											"prefix":            "prefix/",
@@ -935,7 +934,7 @@ func TestExpandS3StorageClassAnalysis(t *testing.T) {
 				DataExport: &s3.StorageClassAnalysisDataExport{
 					Destination: &s3.AnalyticsExportDestination{
 						S3BucketDestination: &s3.AnalyticsS3BucketDestination{
-							Bucket:          aws.String("arn:aws:s3"), //lintignore:AWSAT005
+							Bucket:          aws.String("arn:aws:s3"),
 							BucketAccountId: aws.String("1234567890"),
 							Format:          aws.String(s3.AnalyticsS3ExportFileFormatCsv),
 							Prefix:          aws.String("prefix/"),
@@ -953,7 +952,7 @@ func TestExpandS3StorageClassAnalysis(t *testing.T) {
 								map[string]interface{}{
 									"s3_bucket_destination": []interface{}{
 										map[string]interface{}{
-											"bucket_arn": "arn:aws:s3", //lintignore:AWSAT005
+											"bucket_arn": "arn:aws:s3",
 											"format":     s3.AnalyticsS3ExportFileFormatCsv,
 										},
 									},
@@ -967,7 +966,7 @@ func TestExpandS3StorageClassAnalysis(t *testing.T) {
 				DataExport: &s3.StorageClassAnalysisDataExport{
 					Destination: &s3.AnalyticsExportDestination{
 						S3BucketDestination: &s3.AnalyticsS3BucketDestination{
-							Bucket:          aws.String("arn:aws:s3"), //lintignore:AWSAT005
+							Bucket:          aws.String("arn:aws:s3"),
 							BucketAccountId: nil,
 							Format:          aws.String(s3.AnalyticsS3ExportFileFormatCsv),
 							Prefix:          nil,
@@ -1154,7 +1153,7 @@ func TestFlattenS3StorageClassAnalysis(t *testing.T) {
 				DataExport: &s3.StorageClassAnalysisDataExport{
 					Destination: &s3.AnalyticsExportDestination{
 						S3BucketDestination: &s3.AnalyticsS3BucketDestination{
-							Bucket: aws.String("arn:aws:s3"), //lintignore:AWSAT005
+							Bucket: aws.String("arn:aws:s3"),
 							Format: aws.String(s3.AnalyticsS3ExportFileFormatCsv),
 						},
 					},
@@ -1168,7 +1167,8 @@ func TestFlattenS3StorageClassAnalysis(t *testing.T) {
 								map[string]interface{}{
 									"s3_bucket_destination": []interface{}{
 										map[string]interface{}{
-											"bucket_arn": "arn:aws:s3", //lintignore:AWSAT005
+
+											"bucket_arn": "arn:aws:s3",
 											"format":     s3.AnalyticsS3ExportFileFormatCsv,
 										},
 									},
@@ -1184,7 +1184,7 @@ func TestFlattenS3StorageClassAnalysis(t *testing.T) {
 				DataExport: &s3.StorageClassAnalysisDataExport{
 					Destination: &s3.AnalyticsExportDestination{
 						S3BucketDestination: &s3.AnalyticsS3BucketDestination{
-							Bucket:          aws.String("arn:aws:s3"), //lintignore:AWSAT005
+							Bucket:          aws.String("arn:aws:s3"),
 							BucketAccountId: aws.String("1234567890"),
 							Format:          aws.String(s3.AnalyticsS3ExportFileFormatCsv),
 							Prefix:          aws.String("prefix/"),
@@ -1200,7 +1200,7 @@ func TestFlattenS3StorageClassAnalysis(t *testing.T) {
 								map[string]interface{}{
 									"s3_bucket_destination": []interface{}{
 										map[string]interface{}{
-											"bucket_arn":        "arn:aws:s3", //lintignore:AWSAT005
+											"bucket_arn":        "arn:aws:s3",
 											"bucket_account_id": "1234567890",
 											"format":            s3.AnalyticsS3ExportFileFormatCsv,
 											"prefix":            "prefix/",

@@ -6,10 +6,9 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/terraform-providers/terraform-provider-aws/aws/internal/keyvaluetags"
 )
 
@@ -21,10 +20,6 @@ func resourceAwsEbsSnapshotCopy() *schema.Resource {
 		Delete: resourceAwsEbsSnapshotCopyDelete,
 
 		Schema: map[string]*schema.Schema{
-			"arn": {
-				Type:     schema.TypeString,
-				Computed: true,
-			},
 			"volume_id": {
 				Type:     schema.TypeString,
 				Computed: true,
@@ -98,7 +93,7 @@ func resourceAwsEbsSnapshotCopyCreate(d *schema.ResourceData, meta interface{}) 
 		return err
 	}
 
-	d.SetId(aws.StringValue(res.SnapshotId))
+	d.SetId(*res.SnapshotId)
 
 	err = resourceAwsEbsSnapshotCopyWaitForAvailable(d.Id(), conn)
 	if err != nil {
@@ -110,7 +105,6 @@ func resourceAwsEbsSnapshotCopyCreate(d *schema.ResourceData, meta interface{}) 
 
 func resourceAwsEbsSnapshotCopyRead(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).ec2conn
-	ignoreTagsConfig := meta.(*AWSClient).IgnoreTagsConfig
 
 	req := &ec2.DescribeSnapshotsInput{
 		SnapshotIds: []*string{aws.String(d.Id())},
@@ -137,18 +131,9 @@ func resourceAwsEbsSnapshotCopyRead(d *schema.ResourceData, meta interface{}) er
 	d.Set("kms_key_id", snapshot.KmsKeyId)
 	d.Set("volume_size", snapshot.VolumeSize)
 
-	if err := d.Set("tags", keyvaluetags.Ec2KeyValueTags(snapshot.Tags).IgnoreAws().IgnoreConfig(ignoreTagsConfig).Map()); err != nil {
+	if err := d.Set("tags", keyvaluetags.Ec2KeyValueTags(snapshot.Tags).IgnoreAws().Map()); err != nil {
 		return fmt.Errorf("error setting tags: %s", err)
 	}
-
-	snapshotArn := arn.ARN{
-		Partition: meta.(*AWSClient).partition,
-		Region:    meta.(*AWSClient).region,
-		Resource:  fmt.Sprintf("snapshot/%s", d.Id()),
-		Service:   "ec2",
-	}.String()
-
-	d.Set("arn", snapshotArn)
 
 	return nil
 }

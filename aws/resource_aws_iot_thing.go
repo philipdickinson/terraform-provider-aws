@@ -5,8 +5,8 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iot"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
 func resourceAwsIotThing() *schema.Resource {
@@ -30,7 +30,6 @@ func resourceAwsIotThing() *schema.Resource {
 			"attributes": {
 				Type:     schema.TypeMap,
 				Optional: true,
-				Elem:     &schema.Schema{Type: schema.TypeString},
 			},
 			"thing_type_name": {
 				Type:         schema.TypeString,
@@ -75,7 +74,7 @@ func resourceAwsIotThingCreate(d *schema.ResourceData, meta interface{}) error {
 		return err
 	}
 
-	d.SetId(aws.StringValue(out.ThingName))
+	d.SetId(*out.ThingName)
 
 	return resourceAwsIotThingRead(d, meta)
 }

@@ -6,8 +6,9 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/apigateway"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 func resourceAwsApiGatewayResource() *schema.Resource {
@@ -24,6 +25,7 @@ func resourceAwsApiGatewayResource() *schema.Resource {
 				}
 				restApiID := idParts[0]
 				resourceID := idParts[1]
+				d.Set("request_validator_id", resourceID)
 				d.Set("rest_api_id", restApiID)
 				d.SetId(resourceID)
 				return []*schema.ResourceData{d}, nil
@@ -70,7 +72,7 @@ func resourceAwsApiGatewayResourceCreate(d *schema.ResourceData, meta interface{
 		return fmt.Errorf("Error creating API Gateway Resource: %s", err)
 	}
 
-	d.SetId(aws.StringValue(resource.Id))
+	d.SetId(*resource.Id)
 
 	return resourceAwsApiGatewayResourceRead(d, meta)
 }
@@ -85,7 +87,7 @@ func resourceAwsApiGatewayResourceRead(d *schema.ResourceData, meta interface{})
 	})
 
 	if err != nil {
-		if isAWSErr(err, apigateway.ErrCodeNotFoundException, "") {
+		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "NotFoundException" {
 			log.Printf("[WARN] API Gateway Resource (%s) not found, removing from state", d.Id())
 			d.SetId("")
 			return nil
@@ -104,7 +106,7 @@ func resourceAwsApiGatewayResourceUpdateOperations(d *schema.ResourceData) []*ap
 	operations := make([]*apigateway.PatchOperation, 0)
 	if d.HasChange("path_part") {
 		operations = append(operations, &apigateway.PatchOperation{
-			Op:    aws.String(apigateway.OpReplace),
+			Op:    aws.String("replace"),
 			Path:  aws.String("/pathPart"),
 			Value: aws.String(d.Get("path_part").(string)),
 		})
@@ -112,7 +114,7 @@ func resourceAwsApiGatewayResourceUpdateOperations(d *schema.ResourceData) []*ap
 
 	if d.HasChange("parent_id") {
 		operations = append(operations, &apigateway.PatchOperation{
-			Op:    aws.String(apigateway.OpReplace),
+			Op:    aws.String("replace"),
 			Path:  aws.String("/parentId"),
 			Value: aws.String(d.Get("parent_id").(string)),
 		})

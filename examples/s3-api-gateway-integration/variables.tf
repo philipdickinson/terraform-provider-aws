@@ -1,3 +1,11 @@
+variable "aws_access_key" {
+  description = ""
+}
+
+variable "aws_secret_key" {
+  description = ""
+}
+
 variable "aws_region" {
-  default = "us-west-2"
+  description = ""
 }

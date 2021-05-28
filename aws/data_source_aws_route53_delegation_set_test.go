@@ -4,17 +4,16 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 )
 
-func TestAccAWSRoute53DelegationSetDataSource_basic(t *testing.T) {
+func TestAccDataSourceRoute53DelegationSet_basic(t *testing.T) {
 	dataSourceName := "data.aws_route53_delegation_set.dset"
 	resourceName := "aws_route53_delegation_set.dset"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:   func() { testAccPreCheck(t) },
-		ErrorCheck: testAccErrorCheckSkipRoute53(t),
-		Providers:  testAccProviders,
+		PreCheck:  func() { testAccPreCheck(t) },
+		Providers: testAccProviders,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccAWSDataSourceAWSRoute53DelegationSetConfig_basic,
@@ -41,10 +40,10 @@ resource "aws_route53_delegation_set" "dset" {
 
 resource "aws_route53_zone" "primary" {
   name              = "example.xyz"
-  delegation_set_id = aws_route53_delegation_set.dset.id
+  delegation_set_id = "${aws_route53_delegation_set.dset.id}"
 }
 
 data "aws_route53_delegation_set" "dset" {
-  id = aws_route53_delegation_set.dset.id
+  id = "${aws_route53_delegation_set.dset.id}"
 }
 `

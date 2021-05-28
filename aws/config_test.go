@@ -55,19 +55,19 @@ func TestAWSClientRegionalHostname(t *testing.T) {
 			Name: "AWS Commercial",
 			AWSClient: &AWSClient{
 				dnsSuffix: "amazonaws.com",
-				region:    "us-west-2", //lintignore:AWSAT003
+				region:    "us-west-2",
 			},
 			Prefix:   "test",
-			Expected: "test.us-west-2.amazonaws.com", //lintignore:AWSAT003
+			Expected: "test.us-west-2.amazonaws.com",
 		},
 		{
 			Name: "AWS China",
 			AWSClient: &AWSClient{
 				dnsSuffix: "amazonaws.com.cn",
-				region:    "cn-northwest-1", //lintignore:AWSAT003
+				region:    "cn-northwest-1",
 			},
 			Prefix:   "test",
-			Expected: "test.cn-northwest-1.amazonaws.com.cn", //lintignore:AWSAT003
+			Expected: "test.cn-northwest-1.amazonaws.com.cn",
 		},
 	}
 

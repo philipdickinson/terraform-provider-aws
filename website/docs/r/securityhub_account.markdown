@@ -24,7 +24,7 @@ The resource does not support any arguments.
 
 ## Attributes Reference
 
-In addition to all arguments above, the following attributes are exported:
+The following attributes are exported in addition to the arguments listed above:
 
 * `id` - AWS Account ID.
 

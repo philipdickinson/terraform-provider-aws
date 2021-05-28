@@ -3,11 +3,12 @@ package aws
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/route53resolver"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
 func dataSourceAwsRoute53ResolverRules() *schema.Resource {
@@ -90,8 +91,7 @@ func dataSourceAwsRoute53ResolverRulesRead(d *schema.ResourceData, meta interfac
 		return fmt.Errorf("error getting Route53 Resolver rules: %s", err)
 	}
 
-	d.SetId(meta.(*AWSClient).region)
-
+	d.SetId(time.Now().UTC().String())
 	err = d.Set("resolver_rule_ids", flattenStringSet(resolverRuleIds))
 	if err != nil {
 		return fmt.Errorf("error setting resolver_rule_ids: %s", err)

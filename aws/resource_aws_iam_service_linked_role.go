@@ -10,9 +10,9 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
 func resourceAwsIamServiceLinkedRole() *schema.Resource {
@@ -87,11 +87,11 @@ func resourceAwsIamServiceLinkedRoleCreate(d *schema.ResourceData, meta interfac
 		AWSServiceName: aws.String(serviceName),
 	}
 
-	if v, ok := d.GetOk("custom_suffix"); ok {
+	if v, ok := d.GetOk("custom_suffix"); ok && v.(string) != "" {
 		params.CustomSuffix = aws.String(v.(string))
 	}
 
-	if v, ok := d.GetOk("description"); ok {
+	if v, ok := d.GetOk("description"); ok && v.(string) != "" {
 		params.Description = aws.String(v.(string))
 	}
 
@@ -100,7 +100,7 @@ func resourceAwsIamServiceLinkedRoleCreate(d *schema.ResourceData, meta interfac
 	if err != nil {
 		return fmt.Errorf("Error creating service-linked role with name %s: %s", serviceName, err)
 	}
-	d.SetId(aws.StringValue(resp.Role.Arn))
+	d.SetId(*resp.Role.Arn)
 
 	return resourceAwsIamServiceLinkedRoleRead(d, meta)
 }

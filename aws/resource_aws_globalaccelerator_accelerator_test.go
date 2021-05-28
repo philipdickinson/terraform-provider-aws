@@ -5,14 +5,13 @@ import (
 	"log"
 	"regexp"
 	"testing"
-	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/globalaccelerator"
 	"github.com/hashicorp/go-multierror"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func init() {
@@ -72,7 +71,7 @@ func testSweepGlobalAcceleratorAccelerators(region string) error {
 
 			// Global Accelerator accelerators need to be in `DEPLOYED` state before they can be deleted.
 			// Removing listeners or disabling can both set the state to `IN_PROGRESS`.
-			if err := resourceAwsGlobalAcceleratorAcceleratorWaitForDeployedState(conn, arn, 60*time.Minute); err != nil {
+			if err := resourceAwsGlobalAcceleratorAcceleratorWaitForDeployedState(conn, arn); err != nil {
 				sweeperErr := fmt.Errorf("error waiting for Global Accelerator Accelerator (%s): %s", arn, err)
 				log.Printf("[ERROR] %s", sweeperErr)
 				sweeperErrs = multierror.Append(sweeperErrs, sweeperErr)
@@ -178,7 +177,7 @@ func TestAccAwsGlobalAcceleratorAccelerator_basic(t *testing.T) {
 	dnsNameRegex := regexp.MustCompile(`^a[a-f0-9]{16}\.awsglobalaccelerator\.com$`)
 
 	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckGlobalAccelerator(t) },
+		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccCheckGlobalAcceleratorAcceleratorDestroy,
 		Steps: []resource.TestStep{
@@ -217,7 +216,7 @@ func TestAccAwsGlobalAcceleratorAccelerator_update(t *testing.T) {
 	newName := acctest.RandomWithPrefix("tf-acc-test")
 
 	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckGlobalAccelerator(t) },
+		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccCheckGlobalAcceleratorAcceleratorDestroy,
 		Steps: []resource.TestStep{
@@ -252,7 +251,7 @@ func TestAccAwsGlobalAcceleratorAccelerator_attributes(t *testing.T) {
 	rName := acctest.RandomWithPrefix("tf-acc-test")
 
 	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckGlobalAccelerator(t) },
+		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccCheckGlobalAcceleratorAcceleratorDestroy,
 		Steps: []resource.TestStep{
@@ -280,7 +279,7 @@ func TestAccAwsGlobalAcceleratorAccelerator_tags(t *testing.T) {
 	rName := acctest.RandomWithPrefix("tf-acc-test")
 
 	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckGlobalAccelerator(t) },
+		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccCheckGlobalAcceleratorAcceleratorDestroy,
 		Steps: []resource.TestStep{
@@ -316,22 +315,6 @@ func TestAccAwsGlobalAcceleratorAccelerator_tags(t *testing.T) {
 			},
 		},
 	})
-}
-
-func testAccPreCheckGlobalAccelerator(t *testing.T) {
-	conn := testAccProvider.Meta().(*AWSClient).globalacceleratorconn
-
-	input := &globalaccelerator.ListAcceleratorsInput{}
-
-	_, err := conn.ListAccelerators(input)
-
-	if testAccPreCheckSkipError(err) {
-		t.Skipf("skipping acceptance testing: %s", err)
-	}
-
-	if err != nil {
-		t.Fatalf("unexpected PreCheck error: %s", err)
-	}
 }
 
 func testAccCheckGlobalAcceleratorAcceleratorExists(name string) resource.TestCheckFunc {
@@ -403,7 +386,7 @@ resource "aws_globalaccelerator_accelerator" "example" {
 
   attributes {
     flow_logs_enabled   = true
-    flow_logs_s3_bucket = aws_s3_bucket.example.bucket
+    flow_logs_s3_bucket = "${aws_s3_bucket.example.bucket}"
     flow_logs_s3_prefix = "flow-logs/"
   }
 }
@@ -418,9 +401,8 @@ resource "aws_globalaccelerator_accelerator" "example" {
   enabled         = %t
 
   tags = {
-    Name = "%[1]s"
-
-    %[3]s = "%[4]s"
+	  Name = "%[1]s"
+	  %[3]s  = "%[4]s"
   }
 }
 `, rName, enabled, tagKey, tagValue)

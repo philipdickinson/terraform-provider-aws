@@ -22,7 +22,8 @@ resource "aws_neptune_cluster" "default" {
 }
 
 resource "aws_neptune_cluster_instance" "example" {
-  cluster_identifier = aws_neptune_cluster.default.id
+  count              = 1
+  cluster_identifier = "${aws_neptune_cluster.default.id}"
   engine             = "neptune"
   instance_class     = "db.r4.large"
   apply_immediately  = "true"
@@ -34,10 +35,10 @@ resource "aws_sns_topic" "default" {
 
 resource "aws_neptune_event_subscription" "default" {
   name          = "neptune-event-sub"
-  sns_topic_arn = aws_sns_topic.default.arn
+  sns_topic_arn = "${aws_sns_topic.default.arn}"
 
   source_type = "db-instance"
-  source_ids  = [aws_neptune_cluster_instance.example.id]
+  source_ids  = ["${aws_neptune_cluster_instance.example.id}"]
 
   event_categories = [
     "maintenance",
@@ -71,7 +72,7 @@ The following arguments are supported:
 * `sns_topic_arn` - (Required) The ARN of the SNS topic to send events to.
 * `source_ids` - (Optional) A list of identifiers of the event sources for which events will be returned. If not specified, then all sources are included in the response. If specified, a `source_type` must also be specified.
 * `source_type` - (Optional) The type of source that will be generating the events. Valid options are `db-instance`, `db-security-group`, `db-parameter-group`, `db-snapshot`, `db-cluster` or `db-cluster-snapshot`. If not set, all sources will be subscribed to.
-* `tags` - (Optional) A map of tags to assign to the resource.
+* `tags` - (Optional) A mapping of tags to assign to the resource.
 
 ## Attributes
 
@@ -83,7 +84,7 @@ The following additional atttributes are provided:
 
 ## Timeouts
 
-`aws_neptune_event_subscription` provides the following [Timeouts](https://www.terraform.io/docs/configuration/blocks/resources/syntax.html#operation-timeouts)
+`aws_neptune_event_subscription` provides the following [Timeouts](/docs/configuration/resources.html#timeouts)
 configuration options:
 
 - `create` - (Default `40m`) How long to wait for creating event subscription to become available.

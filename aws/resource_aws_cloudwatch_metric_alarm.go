@@ -6,13 +6,12 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/cloudwatch"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 	"github.com/terraform-providers/terraform-provider-aws/aws/internal/keyvaluetags"
 )
 
 func resourceAwsCloudWatchMetricAlarm() *schema.Resource {
-	//lintignore:R011
 	return &schema.Resource{
 		Create:        resourceAwsCloudWatchMetricAlarmCreate,
 		Read:          resourceAwsCloudWatchMetricAlarmRead,
@@ -72,7 +71,6 @@ func resourceAwsCloudWatchMetricAlarm() *schema.Resource {
 									"dimensions": {
 										Type:     schema.TypeMap,
 										Optional: true,
-										Elem:     &schema.Schema{Type: schema.TypeString},
 									},
 									"metric_name": {
 										Type:     schema.TypeString,
@@ -165,7 +163,6 @@ func resourceAwsCloudWatchMetricAlarm() *schema.Resource {
 				Type:          schema.TypeMap,
 				Optional:      true,
 				ConflictsWith: []string{"metric_query"},
-				Elem:          &schema.Schema{Type: schema.TypeString},
 			},
 			"insufficient_data_actions": {
 				Type:     schema.TypeSet,
@@ -253,7 +250,6 @@ func resourceAwsCloudWatchMetricAlarmCreate(d *schema.ResourceData, meta interfa
 
 func resourceAwsCloudWatchMetricAlarmRead(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).cloudwatchconn
-	ignoreTagsConfig := meta.(*AWSClient).IgnoreTagsConfig
 
 	resp, err := getAwsCloudWatchMetricAlarm(d, meta)
 	if err != nil {
@@ -333,7 +329,7 @@ func resourceAwsCloudWatchMetricAlarmRead(d *schema.ResourceData, meta interface
 		return fmt.Errorf("error listing tags for CloudWatch Metric Alarm (%s): %s", arn, err)
 	}
 
-	if err := d.Set("tags", tags.IgnoreAws().IgnoreConfig(ignoreTagsConfig).Map()); err != nil {
+	if err := d.Set("tags", tags.IgnoreAws().Map()); err != nil {
 		return fmt.Errorf("error setting tags: %s", err)
 	}
 

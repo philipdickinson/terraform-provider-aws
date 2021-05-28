@@ -8,9 +8,9 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/gamelift"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func init() {
@@ -92,11 +92,7 @@ func TestAccAWSGameliftAlias_basic(t *testing.T) {
 	uMessage := fmt.Sprintf("tf test updated message %s", rString)
 
 	resource.ParallelTest(t, resource.TestCase{
-		PreCheck: func() {
-			testAccPreCheck(t)
-			testAccPartitionHasServicePreCheck(gamelift.EndpointsID, t)
-			testAccPreCheckAWSGamelift(t)
-		},
+		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckAWSGamelift(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccCheckAWSGameliftAliasDestroy,
 		Steps: []resource.TestStep{
@@ -142,11 +138,7 @@ func TestAccAWSGameliftAlias_tags(t *testing.T) {
 	aliasName := acctest.RandomWithPrefix("tf-acc-alias")
 
 	resource.ParallelTest(t, resource.TestCase{
-		PreCheck: func() {
-			testAccPreCheck(t)
-			testAccPartitionHasServicePreCheck(gamelift.EndpointsID, t)
-			testAccPreCheckAWSGamelift(t)
-		},
+		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckAWSGamelift(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccCheckAWSGameliftAliasDestroy,
 		Steps: []resource.TestStep{
@@ -215,11 +207,7 @@ func TestAccAWSGameliftAlias_fleetRouting(t *testing.T) {
 	resourceName := "aws_gamelift_alias.test"
 
 	resource.ParallelTest(t, resource.TestCase{
-		PreCheck: func() {
-			testAccPreCheck(t)
-			testAccPartitionHasServicePreCheck(gamelift.EndpointsID, t)
-			testAccPreCheckAWSGamelift(t)
-		},
+		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckAWSGamelift(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccCheckAWSGameliftAliasDestroy,
 		Steps: []resource.TestStep{
@@ -256,11 +244,7 @@ func TestAccAWSGameliftAlias_disappears(t *testing.T) {
 	message := fmt.Sprintf("tf test message %s", rString)
 
 	resource.ParallelTest(t, resource.TestCase{
-		PreCheck: func() {
-			testAccPreCheck(t)
-			testAccPartitionHasServicePreCheck(gamelift.EndpointsID, t)
-			testAccPreCheckAWSGamelift(t)
-		},
+		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckAWSGamelift(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccCheckAWSGameliftAliasDestroy,
 		Steps: []resource.TestStep{
@@ -403,11 +387,13 @@ resource "aws_gamelift_alias" "test" {
   description = "%s"
 
   routing_strategy {
-    fleet_id = aws_gamelift_fleet.test.id
+    fleet_id = "${aws_gamelift_fleet.test.id}"
     type     = "SIMPLE"
   }
 }
+
 %s
+
 `, aliasName, description,
 		testAccAWSGameliftFleetBasicConfig(fleetName, launchPath, params, buildName, bucketName, key, roleArn))
 }

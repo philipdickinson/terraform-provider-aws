@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-func TestAccAWSConfig_serial(t *testing.T) {
+func TestAccAWSConfig(t *testing.T) {
 	testCases := map[string]map[string]func(t *testing.T){
 		"Config": {
 			"basic":            testAccConfigConfigRule_basic,
@@ -60,12 +60,6 @@ func TestAccAWSConfig_serial(t *testing.T) {
 			"RuleIdentifier":            testAccConfigOrganizationManagedRule_RuleIdentifier,
 			"TagKeyScope":               testAccConfigOrganizationManagedRule_TagKeyScope,
 			"TagValueScope":             testAccConfigOrganizationManagedRule_TagValueScope,
-		},
-		"RemediationConfiguration": {
-			"basic":      testAccConfigRemediationConfiguration_basic,
-			"disappears": testAccConfigRemediationConfiguration_disappears,
-			"recreates":  testAccConfigRemediationConfiguration_recreates,
-			"updates":    testAccConfigRemediationConfiguration_updates,
 		},
 	}
 

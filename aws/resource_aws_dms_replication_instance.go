@@ -7,9 +7,9 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	dms "github.com/aws/aws-sdk-go/service/databasemigrationservice"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 	"github.com/terraform-providers/terraform-provider-aws/aws/internal/keyvaluetags"
 )
 
@@ -36,10 +36,6 @@ func resourceAwsDmsReplicationInstance() *schema.Resource {
 				Computed:     true,
 				Optional:     true,
 				ValidateFunc: validation.IntBetween(5, 6144),
-			},
-			"allow_major_version_upgrade": {
-				Type:     schema.TypeBool,
-				Optional: true,
 			},
 			"apply_immediately": {
 				Type:     schema.TypeBool,
@@ -164,7 +160,7 @@ func resourceAwsDmsReplicationInstanceCreate(d *schema.ResourceData, meta interf
 		request.ReplicationSubnetGroupIdentifier = aws.String(v.(string))
 	}
 	if v, ok := d.GetOk("vpc_security_group_ids"); ok {
-		request.VpcSecurityGroupIds = expandStringSet(v.(*schema.Set))
+		request.VpcSecurityGroupIds = expandStringList(v.(*schema.Set).List())
 	}
 
 	log.Println("[DEBUG] DMS create replication instance:", request)
@@ -196,7 +192,6 @@ func resourceAwsDmsReplicationInstanceCreate(d *schema.ResourceData, meta interf
 
 func resourceAwsDmsReplicationInstanceRead(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).dmsconn
-	ignoreTagsConfig := meta.(*AWSClient).IgnoreTagsConfig
 
 	response, err := conn.DescribeReplicationInstances(&dms.DescribeReplicationInstancesInput{
 		Filters: []*dms.Filter{
@@ -262,7 +257,7 @@ func resourceAwsDmsReplicationInstanceRead(d *schema.ResourceData, meta interfac
 		return fmt.Errorf("error listing tags for DMS Replication Instance (%s): %s", d.Get("replication_instance_arn").(string), err)
 	}
 
-	if err := d.Set("tags", tags.IgnoreAws().IgnoreConfig(ignoreTagsConfig).Map()); err != nil {
+	if err := d.Set("tags", tags.IgnoreAws().Map()); err != nil {
 		return fmt.Errorf("error setting tags: %s", err)
 	}
 
@@ -288,12 +283,6 @@ func resourceAwsDmsReplicationInstanceUpdate(d *schema.ResourceData, meta interf
 			request.AllocatedStorage = aws.Int64(int64(v.(int)))
 			hasChanges = true
 		}
-	}
-
-	if v, ok := d.GetOk("allow_major_version_upgrade"); ok {
-		request.AllowMajorVersionUpgrade = aws.Bool(v.(bool))
-		// Having allowing_major_version_upgrade by itself should not trigger ModifyReplicationInstance
-		// as it results in InvalidParameterCombination: No modifications were requested
 	}
 
 	if d.HasChange("engine_version") {
@@ -322,7 +311,7 @@ func resourceAwsDmsReplicationInstanceUpdate(d *schema.ResourceData, meta interf
 
 	if d.HasChange("vpc_security_group_ids") {
 		if v, ok := d.GetOk("vpc_security_group_ids"); ok {
-			request.VpcSecurityGroupIds = expandStringSet(v.(*schema.Set))
+			request.VpcSecurityGroupIds = expandStringList(v.(*schema.Set).List())
 			hasChanges = true
 		}
 	}

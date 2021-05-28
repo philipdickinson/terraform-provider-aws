@@ -8,16 +8,10 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/codestarnotifications"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 	"github.com/terraform-providers/terraform-provider-aws/aws/internal/keyvaluetags"
-	"github.com/terraform-providers/terraform-provider-aws/aws/internal/tfresource"
-)
-
-const (
-	// Maximum amount of time to wait for target subscriptions to propagate
-	codestarNotificationsTargetSubscriptionTimeout = 30 * time.Second
 )
 
 func resourceAwsCodeStarNotificationsNotificationRule() *schema.Resource {
@@ -125,7 +119,7 @@ func resourceAwsCodeStarNotificationsNotificationRuleCreate(d *schema.ResourceDa
 
 	params := &codestarnotifications.CreateNotificationRuleInput{
 		DetailType:   aws.String(d.Get("detail_type").(string)),
-		EventTypeIds: expandStringSet(d.Get("event_type_ids").(*schema.Set)),
+		EventTypeIds: expandStringList(d.Get("event_type_ids").(*schema.Set).List()),
 		Name:         aws.String(d.Get("name").(string)),
 		Resource:     aws.String(d.Get("resource").(string)),
 		Status:       aws.String(d.Get("status").(string)),
@@ -148,7 +142,6 @@ func resourceAwsCodeStarNotificationsNotificationRuleCreate(d *schema.ResourceDa
 
 func resourceAwsCodeStarNotificationsNotificationRuleRead(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).codestarnotificationsconn
-	ignoreTagsConfig := meta.(*AWSClient).IgnoreTagsConfig
 
 	rule, err := conn.DescribeNotificationRule(&codestarnotifications.DescribeNotificationRuleInput{
 		Arn: aws.String(d.Id()),
@@ -175,7 +168,7 @@ func resourceAwsCodeStarNotificationsNotificationRuleRead(d *schema.ResourceData
 	d.Set("name", rule.Name)
 	d.Set("status", rule.Status)
 	d.Set("resource", rule.Resource)
-	d.Set("tags", keyvaluetags.New(rule.Tags).IgnoreAws().IgnoreConfig(ignoreTagsConfig).Map())
+	d.Set("tags", keyvaluetags.New(rule.Tags).IgnoreAws().Map())
 
 	targets := make([]map[string]interface{}, 0, len(rule.Targets))
 	for _, t := range rule.Targets {
@@ -203,56 +196,49 @@ func cleanupCodeStarNotificationsNotificationRuleTargets(conn *codestarnotificat
 		removedTargets = oldVal.Difference(newVal)
 	}
 
-	for _, targetRaw := range removedTargets.List() {
-		target, ok := targetRaw.(map[string]interface{})
+	targets := removedTargets.List()
 
-		if !ok {
-			continue
-		}
+	err := resource.Retry(time.Duration(5)*time.Second, func() *resource.RetryError {
+		var (
+			reterr error
+			i      int
+		)
 
-		input := &codestarnotifications.DeleteTargetInput{
-			ForceUnsubscribeAll: aws.Bool(false),
-			TargetAddress:       aws.String(target["address"].(string)),
-		}
-
-		err := resource.Retry(codestarNotificationsTargetSubscriptionTimeout, func() *resource.RetryError {
-			_, err := conn.DeleteTarget(input)
-
+		for _, t := range targets {
+			target := t.(map[string]interface{})
+			_, err := conn.DeleteTarget(&codestarnotifications.DeleteTargetInput{
+				ForceUnsubscribeAll: aws.Bool(false),
+				TargetAddress:       aws.String(target["address"].(string)),
+			})
 			if isAWSErr(err, codestarnotifications.ErrCodeValidationException, awsCodeStartNotificationsNotificationRuleErrorSubscribed) {
-				return resource.RetryableError(err)
-			}
-
-			if err != nil {
+				reterr = err
+				targets[i] = target
+				i++
+			} else if err != nil {
 				return resource.NonRetryableError(err)
 			}
-
-			return nil
-		})
-
-		if tfresource.TimedOut(err) {
-			_, err = conn.DeleteTarget(input)
 		}
+		targets = targets[:i]
 
-		// Treat target deletion as best effort
-		if isAWSErr(err, codestarnotifications.ErrCodeValidationException, awsCodeStartNotificationsNotificationRuleErrorSubscribed) {
-			continue
-		}
+		return resource.RetryableError(reterr)
+	})
 
-		if err != nil {
-			return err
-		}
+	if isAWSErr(err, codestarnotifications.ErrCodeValidationException, awsCodeStartNotificationsNotificationRuleErrorSubscribed) {
+		err = nil
 	}
 
-	return nil
+	return err
 }
 
 func resourceAwsCodeStarNotificationsNotificationRuleUpdate(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).codestarnotificationsconn
 
+	d.Partial(true)
+
 	params := &codestarnotifications.UpdateNotificationRuleInput{
 		Arn:          aws.String(d.Id()),
 		DetailType:   aws.String(d.Get("detail_type").(string)),
-		EventTypeIds: expandStringSet(d.Get("event_type_ids").(*schema.Set)),
+		EventTypeIds: expandStringList(d.Get("event_type_ids").(*schema.Set).List()),
 		Name:         aws.String(d.Get("name").(string)),
 		Status:       aws.String(d.Get("status").(string)),
 		Targets:      expandCodeStarNotificationsNotificationRuleTargets(d.Get("target").(*schema.Set).List()),
@@ -261,6 +247,11 @@ func resourceAwsCodeStarNotificationsNotificationRuleUpdate(d *schema.ResourceDa
 	if _, err := conn.UpdateNotificationRule(params); err != nil {
 		return fmt.Errorf("error updating codestar notification rule: %s", err)
 	}
+
+	d.SetPartial("detail_type")
+	d.SetPartial("event_type_ids")
+	d.SetPartial("name")
+	d.SetPartial("target")
 
 	if d.HasChange("tags") {
 		o, n := d.GetChange("tags")
@@ -275,6 +266,8 @@ func resourceAwsCodeStarNotificationsNotificationRuleUpdate(d *schema.ResourceDa
 			return err
 		}
 	}
+
+	d.Partial(false)
 
 	return resourceAwsCodeStarNotificationsNotificationRuleRead(d, meta)
 }

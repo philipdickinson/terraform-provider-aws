@@ -7,13 +7,13 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3control"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 // S3 account-level settings must run serialized
 // for TeamCity environment
-func TestAccAWSS3Account_serial(t *testing.T) {
+func TestAccAWSS3Account(t *testing.T) {
 	testCases := map[string]map[string]func(t *testing.T){
 		"PublicAccessBlock": {
 			"basic":                 testAccAWSS3AccountPublicAccessBlock_basic,
@@ -392,17 +392,19 @@ func testAccCheckAWSS3AccountPublicAccessBlockDisappears() resource.TestCheckFun
 }
 
 func testAccAWSS3AccountPublicAccessBlockConfig() string {
-	return `resource "aws_s3_account_public_access_block" "test" {}`
+	return fmt.Sprintf(`
+resource "aws_s3_account_public_access_block" "test" {}
+`)
 }
 
 func testAccAWSS3AccountPublicAccessBlockConfigAccountId() string {
-	return `
+	return fmt.Sprintf(`
 data "aws_caller_identity" "test" {}
 
 resource "aws_s3_account_public_access_block" "test" {
-  account_id = data.aws_caller_identity.test.account_id
+  account_id = "${data.aws_caller_identity.test.account_id}"
 }
-`
+`)
 }
 
 func testAccAWSS3AccountPublicAccessBlockConfigBlockPublicAcls(blockPublicAcls bool) string {

@@ -5,16 +5,15 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
-func TestAccAWSSnapshotCreateVolumePermission_basic(t *testing.T) {
+func TestAccAWSSnapshotCreateVolumePermission_Basic(t *testing.T) {
 	var snapshotId string
 	accountId := "111122223333"
 
 	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccAWSSnapshotCreateVolumePermissionDestroy,
 		Steps: []resource.TestStep{
@@ -22,7 +21,7 @@ func TestAccAWSSnapshotCreateVolumePermission_basic(t *testing.T) {
 			{
 				Config: testAccAWSSnapshotCreateVolumePermissionConfig(true, accountId),
 				Check: resource.ComposeTestCheckFunc(
-					testCheckResourceGetAttr("aws_ebs_snapshot.test", "id", &snapshotId),
+					testCheckResourceGetAttr("aws_ebs_snapshot.example_snapshot", "id", &snapshotId),
 					testAccAWSSnapshotCreateVolumePermissionExists(&accountId, &snapshotId),
 				),
 			},
@@ -32,28 +31,6 @@ func TestAccAWSSnapshotCreateVolumePermission_basic(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					testAccAWSSnapshotCreateVolumePermissionDestroyed(&accountId, &snapshotId),
 				),
-			},
-		},
-	})
-}
-
-func TestAccAWSSnapshotCreateVolumePermission_disappears(t *testing.T) {
-	var snapshotId string
-	accountId := "111122223333"
-
-	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t) },
-		Providers:    testAccProviders,
-		CheckDestroy: testAccAWSSnapshotCreateVolumePermissionDestroy,
-		Steps: []resource.TestStep{
-			{
-				Config: testAccAWSSnapshotCreateVolumePermissionConfig(true, accountId),
-				Check: resource.ComposeTestCheckFunc(
-					testCheckResourceGetAttr("aws_ebs_snapshot.test", "id", &snapshotId),
-					testAccAWSSnapshotCreateVolumePermissionExists(&accountId, &snapshotId),
-					testAccCheckResourceDisappears(testAccProvider, resourceAwsSnapshotCreateVolumePermission(), "aws_snapshot_create_volume_permission.test"),
-				),
-				ExpectNonEmptyPlan: true,
 			},
 		},
 	})
@@ -107,17 +84,10 @@ func testAccAWSSnapshotCreateVolumePermissionDestroyed(accountId, snapshotId *st
 
 func testAccAWSSnapshotCreateVolumePermissionConfig(includeCreateVolumePermission bool, accountID string) string {
 	base := `
-data "aws_availability_zones" "available" {
-  state = "available"
+data "aws_availability_zones" "available" {}
 
-  filter {
-    name   = "opt-in-status"
-    values = ["opt-in-not-required"]
-  }
-}
-
-resource "aws_ebs_volume" "test" {
-  availability_zone = data.aws_availability_zones.available.names[0]
+resource "aws_ebs_volume" "example" {
+  availability_zone = "${data.aws_availability_zones.available.names[0]}"
   size              = 1
 
   tags = {
@@ -125,8 +95,8 @@ resource "aws_ebs_volume" "test" {
   }
 }
 
-resource "aws_ebs_snapshot" "test" {
-  volume_id = aws_ebs_volume.test.id
+resource "aws_ebs_snapshot" "example_snapshot" {
+  volume_id = "${aws_ebs_volume.example.id}"
 }
 `
 
@@ -135,8 +105,8 @@ resource "aws_ebs_snapshot" "test" {
 	}
 
 	return base + fmt.Sprintf(`
-resource "aws_snapshot_create_volume_permission" "test" {
-  snapshot_id = aws_ebs_snapshot.test.id
+resource "aws_snapshot_create_volume_permission" "self-test" {
+  snapshot_id = "${aws_ebs_snapshot.example_snapshot.id}"
   account_id  = %q
 }
 `, accountID)

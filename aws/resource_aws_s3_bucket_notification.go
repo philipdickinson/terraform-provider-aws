@@ -6,11 +6,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 func resourceAwsS3BucketNotification() *schema.Resource {
@@ -428,7 +429,7 @@ func flattenTopicConfigurations(configs []*s3.TopicConfiguration) []map[string]i
 		}
 
 		conf["id"] = *notification.Id
-		conf["events"] = flattenStringSet(notification.Events)
+		conf["events"] = schema.NewSet(schema.HashString, flattenStringList(notification.Events))
 		conf["topic_arn"] = *notification.TopicArn
 		topicNotifications = append(topicNotifications, conf)
 	}
@@ -447,7 +448,7 @@ func flattenQueueConfigurations(configs []*s3.QueueConfiguration) []map[string]i
 		}
 
 		conf["id"] = *notification.Id
-		conf["events"] = flattenStringSet(notification.Events)
+		conf["events"] = schema.NewSet(schema.HashString, flattenStringList(notification.Events))
 		conf["queue_arn"] = *notification.QueueArn
 		queueNotifications = append(queueNotifications, conf)
 	}
@@ -466,7 +467,7 @@ func flattenLambdaFunctionConfigurations(configs []*s3.LambdaFunctionConfigurati
 		}
 
 		conf["id"] = *notification.Id
-		conf["events"] = flattenStringSet(notification.Events)
+		conf["events"] = schema.NewSet(schema.HashString, flattenStringList(notification.Events))
 		conf["lambda_function_arn"] = *notification.LambdaFunctionArn
 		lambdaFunctionNotifications = append(lambdaFunctionNotifications, conf)
 	}

@@ -6,6 +6,4 @@ variable "aws_second_access_key" {}
 
 variable "aws_second_secret_key" {}
 
-variable "aws_region" {
-  default = "us-west-2"
-}
+variable "aws_region" {}

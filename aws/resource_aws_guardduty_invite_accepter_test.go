@@ -6,9 +6,9 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/guardduty"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func testAccAwsGuardDutyInviteAccepter_basic(t *testing.T) {
@@ -23,7 +23,7 @@ func testAccAwsGuardDutyInviteAccepter_basic(t *testing.T) {
 			testAccPreCheck(t)
 			testAccAlternateAccountPreCheck(t)
 		},
-		ProviderFactories: testAccProviderFactoriesAlternate(&providers),
+		ProviderFactories: testAccProviderFactories(&providers),
 		CheckDestroy:      testAccCheckAwsGuardDutyInviteAccepterDestroy,
 		Steps: []resource.TestStep{
 			{
@@ -110,26 +110,26 @@ func testAccCheckAwsGuardDutyInviteAccepterExists(resourceName string) resource.
 func testAccAwsGuardDutyInviteAccepterConfig_basic(email string) string {
 	return testAccAlternateAccountProviderConfig() + fmt.Sprintf(`
 resource "aws_guardduty_detector" "master" {
-  provider = "awsalternate"
+  provider = "aws.alternate"
 }
 
 resource "aws_guardduty_detector" "member" {}
 
 resource "aws_guardduty_member" "member" {
-  provider = "awsalternate"
+  provider = "aws.alternate"
 
-  account_id                 = aws_guardduty_detector.member.account_id
-  detector_id                = aws_guardduty_detector.master.id
+  account_id                 = "${aws_guardduty_detector.member.account_id}"
+  detector_id                = "${aws_guardduty_detector.master.id}"
   disable_email_notification = true
   email                      = %q
   invite                     = true
 }
 
 resource "aws_guardduty_invite_accepter" "test" {
-  depends_on = [aws_guardduty_member.member]
+  depends_on = ["aws_guardduty_member.member"]
 
-  detector_id       = aws_guardduty_detector.member.id
-  master_account_id = aws_guardduty_detector.master.account_id
+  detector_id       = "${aws_guardduty_detector.member.id}"
+  master_account_id = "${aws_guardduty_detector.master.account_id}"
 }
 `, email)
 }

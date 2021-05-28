@@ -3,7 +3,6 @@ package aws
 import (
 	"bytes"
 	"crypto/rand"
-	"errors"
 	"fmt"
 	"log"
 	"math/big"
@@ -12,10 +11,10 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
-	"github.com/terraform-providers/terraform-provider-aws/aws/internal/encryption"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/encryption"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
 func resourceAwsIamUserLoginProfile() *schema.Resource {
@@ -77,7 +76,7 @@ const (
 
 // generateIAMPassword generates a random password of a given length, matching the
 // most restrictive iam password policy.
-func generateIAMPassword(length int) (string, error) {
+func generateIAMPassword(length int) string {
 	const charset = charLower + charUpper + charNumbers + charSymbols
 
 	result := make([]byte, length)
@@ -94,10 +93,10 @@ func generateIAMPassword(length int) (string, error) {
 		for i := range result {
 			r, err := rand.Int(rand.Reader, charsetSize)
 			if err != nil {
-				return "", err
+				panic(err)
 			}
 			if !r.IsInt64() {
-				return "", errors.New("rand.Int() not representable as an Int64")
+				panic("rand.Int() not representable as an Int64")
 			}
 
 			result[i] = charset[r.Int64()]
@@ -107,10 +106,10 @@ func generateIAMPassword(length int) (string, error) {
 			continue
 		}
 
-		return string(result), nil
+		return string(result)
 	}
 
-	return "", errors.New("failed to generate acceptable password")
+	panic("failed to generate acceptable password")
 }
 
 // Check the generated password contains all character classes listed in the
@@ -133,10 +132,7 @@ func resourceAwsIamUserLoginProfileCreate(d *schema.ResourceData, meta interface
 
 	passwordResetRequired := d.Get("password_reset_required").(bool)
 	passwordLength := d.Get("password_length").(int)
-	initialPassword, err := generateIAMPassword(passwordLength)
-	if err != nil {
-		return err
-	}
+	initialPassword := generateIAMPassword(passwordLength)
 
 	fingerprint, encrypted, err := encryption.EncryptValue(encryptionKey, initialPassword, "Password")
 	if err != nil {
@@ -155,7 +151,7 @@ func resourceAwsIamUserLoginProfileCreate(d *schema.ResourceData, meta interface
 		return fmt.Errorf("Error creating IAM User Login Profile for %q: %s", username, err)
 	}
 
-	d.SetId(aws.StringValue(createResp.LoginProfile.UserName))
+	d.SetId(*createResp.LoginProfile.UserName)
 	d.Set("key_fingerprint", fingerprint)
 	d.Set("encrypted_password", encrypted)
 	return nil

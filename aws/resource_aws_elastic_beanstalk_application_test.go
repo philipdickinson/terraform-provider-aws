@@ -6,13 +6,14 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/elasticbeanstalk"
-	multierror "github.com/hashicorp/go-multierror"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
+// initialize sweeper
 func init() {
 	resource.AddTestSweepers("aws_elastic_beanstalk_application", &resource.Sweeper{
 		Name:         "aws_elastic_beanstalk_application",
@@ -34,7 +35,7 @@ func testSweepElasticBeanstalkApplications(region string) error {
 			log.Printf("[WARN] Skipping Elastic Beanstalk Application sweep for %s: %s", region, err)
 			return nil
 		}
-		return fmt.Errorf("error retrieving beanstalk application: %w", err)
+		return fmt.Errorf("Error retrieving beanstalk application: %s", err)
 	}
 
 	if len(resp.Applications) == 0 {
@@ -42,24 +43,23 @@ func testSweepElasticBeanstalkApplications(region string) error {
 		return nil
 	}
 
-	var errors error
 	for _, bsa := range resp.Applications {
-		applicationName := aws.StringValue(bsa.ApplicationName)
 		_, err := beanstalkconn.DeleteApplication(
 			&elasticbeanstalk.DeleteApplicationInput{
 				ApplicationName: bsa.ApplicationName,
 			})
 		if err != nil {
-			if isAWSErr(err, "InvalidConfiguration.NotFound", "") || isAWSErr(err, "ValidationError", "") {
-				log.Printf("[DEBUG] beanstalk application %q not found", applicationName)
-				continue
+			elasticbeanstalkerr, ok := err.(awserr.Error)
+			if ok && (elasticbeanstalkerr.Code() == "InvalidConfiguration.NotFound" || elasticbeanstalkerr.Code() == "ValidationError") {
+				log.Printf("[DEBUG] beanstalk application (%s) not found", *bsa.ApplicationName)
+				return nil
 			}
 
-			errors = multierror.Append(fmt.Errorf("error deleting Elastic Beanstalk Application %q: %w", applicationName, err))
+			return err
 		}
 	}
 
-	return errors
+	return nil
 }
 
 func TestAccAWSElasticBeanstalkApplication_basic(t *testing.T) {
@@ -87,10 +87,9 @@ func TestAccAWSElasticBeanstalkApplication_basic(t *testing.T) {
 func testAccBeanstalkAppImportConfig(name string) string {
 	return fmt.Sprintf(`
 resource "aws_elastic_beanstalk_application" "tftest" {
-  name        = "%s"
-  description = "tf-test-desc"
-}
-`, name)
+	  name = "%s"
+	  description = "tf-test-desc"
+	}`, name)
 }
 
 func TestAccAWSBeanstalkApp_basic(t *testing.T) {
@@ -244,10 +243,16 @@ func testAccCheckBeanstalkAppDestroy(s *terraform.State) error {
 			if len(resp.Applications) > 0 {
 				return fmt.Errorf("Elastic Beanstalk Application still exists.")
 			}
+
 			return nil
 		}
 
-		if !isAWSErr(err, "InvalidBeanstalkAppID.NotFound", "") {
+		// Verify the error is what we want
+		ec2err, ok := err.(awserr.Error)
+		if !ok {
+			return err
+		}
+		if ec2err.Code() != "InvalidBeanstalkAppID.NotFound" {
 			return err
 		}
 	}
@@ -287,7 +292,7 @@ func testAccCheckBeanstalkAppExists(n string, app *elasticbeanstalk.ApplicationD
 func testAccBeanstalkAppConfig(rName string) string {
 	return fmt.Sprintf(`
 resource "aws_elastic_beanstalk_application" "tftest" {
-  name        = "%s"
+  name = "%s"
   description = "tf-test-desc"
 }
 `, rName)
@@ -322,7 +327,7 @@ EOF
 
 resource "aws_iam_role_policy" "beanstalk_service" {
   name = "%[1]s"
-  role = aws_iam_role.beanstalk_service.id
+  role = "${aws_iam_role.beanstalk_service.id}"
 
   policy = <<EOF
 {
@@ -348,14 +353,13 @@ EOF
 func testAccBeanstalkAppConfigWithMaxAge(rName string) string {
 	return testAccBeanstalkAppServiceRole(rName) + fmt.Sprintf(`
 resource "aws_elastic_beanstalk_application" "tftest" {
-  name        = "%s"
+  name = "%s"
   description = "tf-test-desc"
-
-  appversion_lifecycle {
-    service_role          = aws_iam_role.beanstalk_service.arn
-    max_age_in_days       = 90
-    delete_source_from_s3 = true
-  }
+	appversion_lifecycle {
+		service_role = "${aws_iam_role.beanstalk_service.arn}"
+		max_age_in_days = 90
+		delete_source_from_s3 = true
+	}
 }
 `, rName)
 }
@@ -363,14 +367,13 @@ resource "aws_elastic_beanstalk_application" "tftest" {
 func testAccBeanstalkAppConfigWithMaxCount(rName string) string {
 	return testAccBeanstalkAppServiceRole(rName) + fmt.Sprintf(`
 resource "aws_elastic_beanstalk_application" "tftest" {
-  name        = "%s"
+  name = "%s"
   description = "tf-test-desc"
-
-  appversion_lifecycle {
-    service_role          = aws_iam_role.beanstalk_service.arn
-    max_count             = 10
-    delete_source_from_s3 = false
-  }
+	appversion_lifecycle {
+		service_role = "${aws_iam_role.beanstalk_service.arn}"
+		max_count = 10
+		delete_source_from_s3 = false
+	}
 }
 `, rName)
 }

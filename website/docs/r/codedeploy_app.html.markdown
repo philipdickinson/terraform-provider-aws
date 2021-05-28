@@ -46,9 +46,9 @@ The following arguments are supported:
 * `name` - (Required) The name of the application.
 * `compute_platform` - (Optional) The compute platform can either be `ECS`, `Lambda`, or `Server`. Default is `Server`.
 
-## Attributes Reference
+## Attribute Reference
 
-In addition to all arguments above, the following attributes are exported:
+The following arguments are exported:
 
 * `id` - Amazon's assigned ID for the application.
 * `name` - The application's name.

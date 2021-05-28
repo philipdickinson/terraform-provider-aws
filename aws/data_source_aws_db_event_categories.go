@@ -6,7 +6,8 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/rds"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 func dataSourceAwsDbEventCategories() *schema.Resource {
@@ -55,7 +56,7 @@ func dataSourceAwsDbEventCategoriesRead(d *schema.ResourceData, meta interface{}
 		}
 	}
 
-	d.SetId(meta.(*AWSClient).region)
+	d.SetId(resource.UniqueId())
 	if err := d.Set("event_categories", eventCategories); err != nil {
 		return fmt.Errorf("Error setting Event Categories: %s", err)
 	}

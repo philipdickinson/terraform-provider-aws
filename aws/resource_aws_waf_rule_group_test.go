@@ -8,12 +8,10 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/waf"
-	"github.com/hashicorp/go-multierror"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-	"github.com/terraform-providers/terraform-provider-aws/aws/internal/service/waf/lister"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func init() {
@@ -33,60 +31,36 @@ func testSweepWafRuleGroups(region string) error {
 	}
 	conn := client.(*AWSClient).wafconn
 
-	var sweeperErrs *multierror.Error
-
-	input := &waf.ListRuleGroupsInput{}
-
-	err = lister.ListRuleGroupsPages(conn, input, func(page *waf.ListRuleGroupsOutput, lastPage bool) bool {
-		if page == nil {
-			return !lastPage
-		}
-
-		for _, ruleGroup := range page.RuleGroups {
-			id := aws.StringValue(ruleGroup.RuleGroupId)
-
-			r := resourceAwsWafRuleGroup()
-			d := r.Data(nil)
-			d.SetId(id)
-
-			// Need to Read first to fill in activated_rule attribute
-			err := r.Read(d, client)
-
-			if err != nil {
-				sweeperErr := fmt.Errorf("error reading WAF Rule Group (%s): %w", id, err)
-				log.Printf("[ERROR] %s", sweeperErr)
-				sweeperErrs = multierror.Append(sweeperErrs, sweeperErr)
-				continue
-			}
-
-			// In case it was already deleted
-			if d.Id() == "" {
-				continue
-			}
-
-			err = r.Delete(d, client)
-
-			if err != nil {
-				sweeperErr := fmt.Errorf("error deleting WAF Rule Group (%s): %w", id, err)
-				log.Printf("[ERROR] %s", sweeperErr)
-				sweeperErrs = multierror.Append(sweeperErrs, sweeperErr)
-				continue
-			}
-		}
-
-		return !lastPage
-	})
-
-	if testSweepSkipSweepError(err) {
-		log.Printf("[WARN] Skipping WAF Rule Group sweep for %s: %s", region, err)
-		return sweeperErrs.ErrorOrNil() // In case we have completed some pages, but had errors
-	}
-
+	req := &waf.ListRuleGroupsInput{}
+	resp, err := conn.ListRuleGroups(req)
 	if err != nil {
-		sweeperErrs = multierror.Append(sweeperErrs, fmt.Errorf("error describing WAF Rule Groups: %w", err))
+		if testSweepSkipSweepError(err) {
+			log.Printf("[WARN] Skipping WAF Rule Group sweep for %s: %s", region, err)
+			return nil
+		}
+		return fmt.Errorf("Error describing WAF Rule Groups: %s", err)
 	}
 
-	return sweeperErrs.ErrorOrNil()
+	if len(resp.RuleGroups) == 0 {
+		log.Print("[DEBUG] No AWS WAF Rule Groups to sweep")
+		return nil
+	}
+
+	for _, group := range resp.RuleGroups {
+		rResp, err := conn.ListActivatedRulesInRuleGroup(&waf.ListActivatedRulesInRuleGroupInput{
+			RuleGroupId: group.RuleGroupId,
+		})
+		if err != nil {
+			return err
+		}
+		oldRules := flattenWafActivatedRules(rResp.ActivatedRules)
+		err = deleteWafRuleGroup(*group.RuleGroupId, oldRules, conn)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func TestAccAWSWafRuleGroup_basic(t *testing.T) {
@@ -112,11 +86,9 @@ func TestAccAWSWafRuleGroup_basic(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "activated_rule.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "metric_name", groupName),
 					computeWafActivatedRuleWithRuleId(&rule, "COUNT", 50, &idx),
-					resource.TestCheckTypeSetElemNestedAttrs(resourceName, "activated_rule.*", map[string]string{
-						"action.0.type": "COUNT",
-						"priority":      "50",
-						"type":          waf.WafRuleTypeRegular,
-					}),
+					testCheckResourceAttrWithIndexesAddr(resourceName, "activated_rule.%d.action.0.type", &idx, "COUNT"),
+					testCheckResourceAttrWithIndexesAddr(resourceName, "activated_rule.%d.priority", &idx, "50"),
+					testCheckResourceAttrWithIndexesAddr(resourceName, "activated_rule.%d.type", &idx, waf.WafRuleTypeRegular),
 					testAccMatchResourceAttrGlobalARN(resourceName, "arn", "waf", regexp.MustCompile(`rulegroup/.+`)),
 				),
 			},
@@ -216,11 +188,9 @@ func TestAccAWSWafRuleGroup_changeActivatedRules(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "name", groupName),
 					resource.TestCheckResourceAttr(resourceName, "activated_rule.#", "1"),
 					computeWafActivatedRuleWithRuleId(&rule0, "COUNT", 50, &idx0),
-					resource.TestCheckTypeSetElemNestedAttrs(resourceName, "activated_rule.*", map[string]string{
-						"action.0.type": "COUNT",
-						"priority":      "50",
-						"type":          waf.WafRuleTypeRegular,
-					}),
+					testCheckResourceAttrWithIndexesAddr(resourceName, "activated_rule.%d.action.0.type", &idx0, "COUNT"),
+					testCheckResourceAttrWithIndexesAddr(resourceName, "activated_rule.%d.priority", &idx0, "50"),
+					testCheckResourceAttrWithIndexesAddr(resourceName, "activated_rule.%d.type", &idx0, waf.WafRuleTypeRegular),
 				),
 			},
 			{
@@ -232,27 +202,21 @@ func TestAccAWSWafRuleGroup_changeActivatedRules(t *testing.T) {
 
 					testAccCheckAWSWafRuleExists("aws_waf_rule.test", &rule1),
 					computeWafActivatedRuleWithRuleId(&rule1, "BLOCK", 10, &idx1),
-					resource.TestCheckTypeSetElemNestedAttrs(resourceName, "activated_rule.*", map[string]string{
-						"action.0.type": "BLOCK",
-						"priority":      "10",
-						"type":          waf.WafRuleTypeRegular,
-					}),
+					testCheckResourceAttrWithIndexesAddr(resourceName, "activated_rule.%d.action.0.type", &idx1, "BLOCK"),
+					testCheckResourceAttrWithIndexesAddr(resourceName, "activated_rule.%d.priority", &idx1, "10"),
+					testCheckResourceAttrWithIndexesAddr(resourceName, "activated_rule.%d.type", &idx1, waf.WafRuleTypeRegular),
 
 					testAccCheckAWSWafRuleExists("aws_waf_rule.test2", &rule2),
 					computeWafActivatedRuleWithRuleId(&rule2, "COUNT", 1, &idx2),
-					resource.TestCheckTypeSetElemNestedAttrs(resourceName, "activated_rule.*", map[string]string{
-						"action.0.type": "COUNT",
-						"priority":      "1",
-						"type":          waf.WafRuleTypeRegular,
-					}),
+					testCheckResourceAttrWithIndexesAddr(resourceName, "activated_rule.%d.action.0.type", &idx2, "COUNT"),
+					testCheckResourceAttrWithIndexesAddr(resourceName, "activated_rule.%d.priority", &idx2, "1"),
+					testCheckResourceAttrWithIndexesAddr(resourceName, "activated_rule.%d.type", &idx2, waf.WafRuleTypeRegular),
 
 					testAccCheckAWSWafRuleExists("aws_waf_rule.test3", &rule3),
 					computeWafActivatedRuleWithRuleId(&rule3, "BLOCK", 15, &idx3),
-					resource.TestCheckTypeSetElemNestedAttrs(resourceName, "activated_rule.*", map[string]string{
-						"action.0.type": "BLOCK",
-						"priority":      "15",
-						"type":          waf.WafRuleTypeRegular,
-					}),
+					testCheckResourceAttrWithIndexesAddr(resourceName, "activated_rule.%d.action.0.type", &idx3, "BLOCK"),
+					testCheckResourceAttrWithIndexesAddr(resourceName, "activated_rule.%d.priority", &idx3, "15"),
+					testCheckResourceAttrWithIndexesAddr(resourceName, "activated_rule.%d.type", &idx3, waf.WafRuleTypeRegular),
 				),
 			},
 			{
@@ -479,7 +443,7 @@ resource "aws_waf_rule_group" "test" {
     }
 
     priority = 50
-    rule_id  = aws_waf_rule.test.id
+    rule_id  = "${aws_waf_rule.test.id}"
   }
 }
 `, ruleName, groupName)
@@ -512,7 +476,7 @@ resource "aws_waf_rule_group" "test" {
     }
 
     priority = 10
-    rule_id  = aws_waf_rule.test.id
+    rule_id  = "${aws_waf_rule.test.id}"
   }
 
   activated_rule {
@@ -521,7 +485,7 @@ resource "aws_waf_rule_group" "test" {
     }
 
     priority = 1
-    rule_id  = aws_waf_rule.test2.id
+    rule_id  = "${aws_waf_rule.test2.id}"
   }
 
   activated_rule {
@@ -530,7 +494,7 @@ resource "aws_waf_rule_group" "test" {
     }
 
     priority = 15
-    rule_id  = aws_waf_rule.test3.id
+    rule_id  = "${aws_waf_rule.test3.id}"
   }
 }
 `, ruleName1, ruleName2, ruleName3, groupName)
@@ -552,7 +516,7 @@ resource "aws_waf_rule_group" "test" {
   metric_name = "%[1]s"
 
   tags = {
-    %q = %q
+	%q = %q
   }
 }
 `, gName, tag1Key, tag1Value)
@@ -565,8 +529,8 @@ resource "aws_waf_rule_group" "test" {
   metric_name = "%[1]s"
 
   tags = {
-    %q = %q
-    %q = %q
+	%q = %q
+	%q = %q
   }
 }
 `, gName, tag1Key, tag1Value, tag2Key, tag2Value)

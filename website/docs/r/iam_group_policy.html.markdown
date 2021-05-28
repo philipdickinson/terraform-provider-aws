@@ -15,7 +15,7 @@ Provides an IAM policy attached to a group.
 ```hcl
 resource "aws_iam_group_policy" "my_developer_policy" {
   name  = "my_developer_policy"
-  group = aws_iam_group.my_developers.name
+  group = "${aws_iam_group.my_developers.id}"
 
   policy = <<EOF
 {
@@ -51,8 +51,6 @@ assign a random, unique name.
 * `group` - (Required) The IAM group to attach to the policy.
 
 ## Attributes Reference
-
-In addition to all arguments above, the following attributes are exported:
 
 * `id` - The group policy ID.
 * `group` - The group to which this policy applies.

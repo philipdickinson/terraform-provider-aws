@@ -1,10 +1,11 @@
 package aws
 
 import (
+	"fmt"
 	"regexp"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 )
 
 func TestAccDataSourceAWSGlueScript_Language_Python(t *testing.T) {
@@ -42,7 +43,7 @@ func TestAccDataSourceAWSGlueScript_Language_Scala(t *testing.T) {
 }
 
 func testAccDataSourceAWSGlueScriptConfigPython() string {
-	return `
+	return fmt.Sprintf(`
 data "aws_glue_script" "test" {
   language = "PYTHON"
 
@@ -136,11 +137,11 @@ data "aws_glue_script" "test" {
     }
   }
 }
-`
+`)
 }
 
 func testAccDataSourceAWSGlueScriptConfigScala() string {
-	return `
+	return fmt.Sprintf(`
 data "aws_glue_script" "test" {
   language = "SCALA"
 
@@ -234,5 +235,5 @@ data "aws_glue_script" "test" {
     }
   }
 }
-`
+`)
 }

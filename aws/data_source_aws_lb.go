@@ -6,7 +6,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/elbv2"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 func dataSourceAwsLb() *schema.Resource {
@@ -14,10 +14,9 @@ func dataSourceAwsLb() *schema.Resource {
 		Read: dataSourceAwsLbRead,
 		Schema: map[string]*schema.Schema{
 			"arn": {
-				Type:         schema.TypeString,
-				Optional:     true,
-				Computed:     true,
-				ValidateFunc: validateArn,
+				Type:     schema.TypeString,
+				Optional: true,
+				Computed: true,
 			},
 
 			"arn_suffix": {
@@ -45,12 +44,14 @@ func dataSourceAwsLb() *schema.Resource {
 				Type:     schema.TypeSet,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 				Computed: true,
+				Set:      schema.HashString,
 			},
 
 			"subnets": {
 				Type:     schema.TypeSet,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 				Computed: true,
+				Set:      schema.HashString,
 			},
 
 			"subnet_mapping": {
@@ -60,19 +61,11 @@ func dataSourceAwsLb() *schema.Resource {
 					Schema: map[string]*schema.Schema{
 						"subnet_id": {
 							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"outpost_id": {
-							Type:     schema.TypeString,
-							Computed: true,
+							Required: true,
 						},
 						"allocation_id": {
 							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"private_ipv4_address": {
-							Type:     schema.TypeString,
-							Computed: true,
+							Optional: true,
 						},
 					},
 				},
@@ -104,11 +97,6 @@ func dataSourceAwsLb() *schema.Resource {
 				Computed: true,
 			},
 
-			"enable_http2": {
-				Type:     schema.TypeBool,
-				Computed: true,
-			},
-
 			"idle_timeout": {
 				Type:     schema.TypeInt,
 				Computed: true,
@@ -134,23 +122,13 @@ func dataSourceAwsLb() *schema.Resource {
 				Computed: true,
 			},
 
-			"ip_address_type": {
-				Type:     schema.TypeString,
-				Computed: true,
-			},
-
-			"customer_owned_ipv4_pool": {
-				Type:     schema.TypeString,
-				Computed: true,
-			},
-
 			"tags": tagsSchemaComputed(),
 		},
 	}
 }
 
 func dataSourceAwsLbRead(d *schema.ResourceData, meta interface{}) error {
-	conn := meta.(*AWSClient).elbv2conn
+	elbconn := meta.(*AWSClient).elbv2conn
 	lbArn := d.Get("arn").(string)
 	lbName := d.Get("name").(string)
 
@@ -163,7 +141,7 @@ func dataSourceAwsLbRead(d *schema.ResourceData, meta interface{}) error {
 	}
 
 	log.Printf("[DEBUG] Reading Load Balancer: %s", describeLbOpts)
-	describeResp, err := conn.DescribeLoadBalancers(describeLbOpts)
+	describeResp, err := elbconn.DescribeLoadBalancers(describeLbOpts)
 	if err != nil {
 		return fmt.Errorf("Error retrieving LB: %s", err)
 	}

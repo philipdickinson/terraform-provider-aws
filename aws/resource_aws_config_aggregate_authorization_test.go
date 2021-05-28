@@ -8,9 +8,9 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/configservice"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 func init() {
@@ -60,7 +60,6 @@ func testSweepConfigAggregateAuthorizations(region string) error {
 func TestAccAWSConfigAggregateAuthorization_basic(t *testing.T) {
 	rString := acctest.RandStringFromCharSet(12, "0123456789")
 	resourceName := "aws_config_aggregate_authorization.example"
-	dataSourceName := "data.aws_region.current"
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
@@ -71,8 +70,8 @@ func TestAccAWSConfigAggregateAuthorization_basic(t *testing.T) {
 				Config: testAccAWSConfigAggregateAuthorizationConfig_basic(rString),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(resourceName, "account_id", rString),
-					resource.TestCheckResourceAttrPair(resourceName, "region", dataSourceName, "name"),
-					testAccMatchResourceAttrRegionalARN(resourceName, "arn", "config", regexp.MustCompile(fmt.Sprintf(`aggregation-authorization/%s/%s$`, rString, testAccGetRegion()))),
+					resource.TestCheckResourceAttr(resourceName, "region", "eu-west-1"),
+					resource.TestMatchResourceAttr(resourceName, "arn", regexp.MustCompile(`^arn:aws:config:[\w-]+:\d{12}:aggregation-authorization/\d{12}/[\w-]+$`)),
 				),
 			},
 			{
@@ -157,28 +156,23 @@ func testAccCheckAWSConfigAggregateAuthorizationDestroy(s *terraform.State) erro
 
 func testAccAWSConfigAggregateAuthorizationConfig_basic(rString string) string {
 	return fmt.Sprintf(`
-data "aws_region" "current" {}
-
 resource "aws_config_aggregate_authorization" "example" {
   account_id = %[1]q
-  region     = data.aws_region.current.name
+  region     = "eu-west-1"
 }
 `, rString)
 }
 
 func testAccAWSConfigAggregateAuthorizationConfig_tags(rString, tagKey1, tagValue1, tagKey2, tagValue2 string) string {
 	return fmt.Sprintf(`
-data "aws_region" "current" {}
-
 resource "aws_config_aggregate_authorization" "example" {
   account_id = %[1]q
-  region     = data.aws_region.current.name
+  region     = "eu-west-1"
 
   tags = {
-    Name = %[1]q
-
-    %[2]s = %[3]q
-    %[4]s = %[5]q
+	Name  = %[1]q
+	%[2]s = %[3]q
+	%[4]s = %[5]q
   }
 }
 `, rString, tagKey1, tagValue1, tagKey2, tagValue2)

@@ -8,9 +8,9 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/gamelift"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 )
 
 const testAccGameliftBuildPrefix = "tf_acc_build_"
@@ -85,11 +85,7 @@ func TestAccAWSGameliftBuild_basic(t *testing.T) {
 	key := *loc.Key
 
 	resource.ParallelTest(t, resource.TestCase{
-		PreCheck: func() {
-			testAccPreCheck(t)
-			testAccPartitionHasServicePreCheck(gamelift.EndpointsID, t)
-			testAccPreCheckAWSGamelift(t)
-		},
+		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckAWSGamelift(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccCheckAWSGameliftBuildDestroy,
 		Steps: []resource.TestStep{
@@ -149,11 +145,7 @@ func TestAccAWSGameliftBuild_tags(t *testing.T) {
 	key := *loc.Key
 
 	resource.ParallelTest(t, resource.TestCase{
-		PreCheck: func() {
-			testAccPreCheck(t)
-			testAccPartitionHasServicePreCheck(gamelift.EndpointsID, t)
-			testAccPreCheckAWSGamelift(t)
-		},
+		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckAWSGamelift(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccCheckAWSGameliftBuildDestroy,
 		Steps: []resource.TestStep{
@@ -211,11 +203,7 @@ func TestAccAWSGameliftBuild_disappears(t *testing.T) {
 	key := *loc.Key
 
 	resource.ParallelTest(t, resource.TestCase{
-		PreCheck: func() {
-			testAccPreCheck(t)
-			testAccPartitionHasServicePreCheck(gamelift.EndpointsID, t)
-			testAccPreCheckAWSGamelift(t)
-		},
+		PreCheck:     func() { testAccPreCheck(t); testAccPreCheckAWSGamelift(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccCheckAWSGameliftBuildDestroy,
 		Steps: []resource.TestStep{

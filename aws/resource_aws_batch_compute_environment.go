@@ -7,9 +7,9 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/batch"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 	"github.com/terraform-providers/terraform-provider-aws/aws/internal/keyvaluetags"
 )
 
@@ -66,7 +66,6 @@ func resourceAwsBatchComputeEnvironment() *schema.Resource {
 						"desired_vcpus": {
 							Type:     schema.TypeInt,
 							Optional: true,
-							Computed: true,
 						},
 						"ec2_key_pair": {
 							Type:     schema.TypeString,
@@ -164,7 +163,6 @@ func resourceAwsBatchComputeEnvironment() *schema.Resource {
 				ValidateFunc: validation.StringInSlice([]string{batch.CEStateEnabled, batch.CEStateDisabled}, true),
 				Default:      batch.CEStateEnabled,
 			},
-			"tags": tagsSchema(),
 			"type": {
 				Type:         schema.TypeString,
 				Required:     true,
@@ -174,6 +172,11 @@ func resourceAwsBatchComputeEnvironment() *schema.Resource {
 			"arn": {
 				Type:     schema.TypeString,
 				Computed: true,
+			},
+			"ecc_cluster_arn": {
+				Type:     schema.TypeString,
+				Computed: true,
+				Removed:  "Use `ecs_cluster_arn` attribute instead",
 			},
 			"ecs_cluster_arn": {
 				Type:     schema.TypeString,
@@ -216,10 +219,6 @@ func resourceAwsBatchComputeEnvironmentCreate(d *schema.ResourceData, meta inter
 
 	if v, ok := d.GetOk("state"); ok {
 		input.State = aws.String(v.(string))
-	}
-
-	if v := d.Get("tags").(map[string]interface{}); len(v) > 0 {
-		input.Tags = keyvaluetags.New(v).IgnoreAws().BatchTags()
 	}
 
 	if computeEnvironmentType == batch.CETypeManaged {
@@ -265,7 +264,7 @@ func resourceAwsBatchComputeEnvironmentCreate(d *schema.ResourceData, meta inter
 		if v, ok := computeResource["bid_percentage"]; ok {
 			input.ComputeResources.BidPercentage = aws.Int64(int64(v.(int)))
 		}
-		if v, ok := computeResource["desired_vcpus"]; ok && v.(int) > 0 {
+		if v, ok := computeResource["desired_vcpus"]; ok {
 			input.ComputeResources.DesiredvCpus = aws.Int64(int64(v.(int)))
 		}
 		if v, ok := computeResource["ec2_key_pair"]; ok {
@@ -320,7 +319,6 @@ func resourceAwsBatchComputeEnvironmentCreate(d *schema.ResourceData, meta inter
 
 func resourceAwsBatchComputeEnvironmentRead(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).batchconn
-	ignoreTagsConfig := meta.(*AWSClient).IgnoreTagsConfig
 
 	computeEnvironmentName := d.Get("compute_environment_name").(string)
 
@@ -333,26 +331,17 @@ func resourceAwsBatchComputeEnvironmentRead(d *schema.ResourceData, meta interfa
 	log.Printf("[DEBUG] Read compute environment %s.\n", input)
 
 	result, err := conn.DescribeComputeEnvironments(input)
-
 	if err != nil {
-		return fmt.Errorf("error reading Batch Compute Environment (%s): %w", d.Id(), err)
+		return err
 	}
 
 	if len(result.ComputeEnvironments) == 0 {
-		log.Printf("[WARN] Batch Compute Environment (%s) not found, removing from state", d.Id())
-		d.SetId("")
-		return nil
+		return fmt.Errorf("One compute environment is expected, but AWS return no compute environment")
 	}
-
 	computeEnvironment := result.ComputeEnvironments[0]
 
 	d.Set("service_role", computeEnvironment.ServiceRole)
 	d.Set("state", computeEnvironment.State)
-
-	if err := d.Set("tags", keyvaluetags.BatchKeyValueTags(computeEnvironment.Tags).IgnoreAws().IgnoreConfig(ignoreTagsConfig).Map()); err != nil {
-		return fmt.Errorf("error setting tags: %s", err)
-	}
-
 	d.Set("type", computeEnvironment.Type)
 
 	if aws.StringValue(computeEnvironment.Type) == batch.CETypeManaged {
@@ -379,12 +368,12 @@ func flattenBatchComputeResources(computeResource *batch.ComputeResource) []map[
 	m["ec2_key_pair"] = aws.StringValue(computeResource.Ec2KeyPair)
 	m["image_id"] = aws.StringValue(computeResource.ImageId)
 	m["instance_role"] = aws.StringValue(computeResource.InstanceRole)
-	m["instance_type"] = flattenStringSet(computeResource.InstanceTypes)
+	m["instance_type"] = schema.NewSet(schema.HashString, flattenStringList(computeResource.InstanceTypes))
 	m["max_vcpus"] = int(aws.Int64Value(computeResource.MaxvCpus))
 	m["min_vcpus"] = int(aws.Int64Value(computeResource.MinvCpus))
-	m["security_group_ids"] = flattenStringSet(computeResource.SecurityGroupIds)
+	m["security_group_ids"] = schema.NewSet(schema.HashString, flattenStringList(computeResource.SecurityGroupIds))
 	m["spot_iam_fleet_role"] = aws.StringValue(computeResource.SpotIamFleetRole)
-	m["subnets"] = flattenStringSet(computeResource.Subnets)
+	m["subnets"] = schema.NewSet(schema.HashString, flattenStringList(computeResource.Subnets))
 	m["tags"] = keyvaluetags.BatchKeyValueTags(computeResource.Tags).IgnoreAws().Map()
 	m["type"] = aws.StringValue(computeResource.Type)
 
@@ -422,61 +411,36 @@ func resourceAwsBatchComputeEnvironmentDelete(d *schema.ResourceData, meta inter
 func resourceAwsBatchComputeEnvironmentUpdate(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).batchconn
 
-	if d.HasChanges("compute_resources", "service_role", "state") {
-		computeEnvironmentName := d.Get("compute_environment_name").(string)
+	computeEnvironmentName := d.Get("compute_environment_name").(string)
 
-		input := &batch.UpdateComputeEnvironmentInput{
-			ComputeEnvironment: aws.String(computeEnvironmentName),
-			ComputeResources:   &batch.ComputeResourceUpdate{},
-		}
-
-		if d.HasChange("service_role") {
-			input.ServiceRole = aws.String(d.Get("service_role").(string))
-		}
-		if d.HasChange("state") {
-			input.State = aws.String(d.Get("state").(string))
-		}
-
-		if d.HasChange("compute_resources") {
-			computeResources := d.Get("compute_resources").([]interface{})
-			if len(computeResources) == 0 {
-				return fmt.Errorf("One compute environment is expected, but no compute environments are set")
-			}
-			computeResource := computeResources[0].(map[string]interface{})
-
-			if d.HasChange("compute_resources.0.desired_vcpus") {
-				input.ComputeResources.DesiredvCpus = aws.Int64(int64(computeResource["desired_vcpus"].(int)))
-			}
-
-			input.ComputeResources.MaxvCpus = aws.Int64(int64(computeResource["max_vcpus"].(int)))
-			input.ComputeResources.MinvCpus = aws.Int64(int64(computeResource["min_vcpus"].(int)))
-		}
-
-		log.Printf("[DEBUG] Update compute environment %s.\n", input)
-
-		if _, err := conn.UpdateComputeEnvironment(input); err != nil {
-			return fmt.Errorf("error updating Batch Compute Environment (%s): %w", d.Id(), err)
-		}
-
-		stateConf := &resource.StateChangeConf{
-			Pending:    []string{batch.CEStatusUpdating},
-			Target:     []string{batch.CEStatusValid},
-			Refresh:    resourceAwsBatchComputeEnvironmentStatusRefreshFunc(computeEnvironmentName, conn),
-			Timeout:    d.Timeout(schema.TimeoutUpdate),
-			MinTimeout: 5 * time.Second,
-		}
-
-		if _, err := stateConf.WaitForState(); err != nil {
-			return fmt.Errorf("error waiting for Batch Compute Environment (%s) update: %w", d.Id(), err)
-		}
+	input := &batch.UpdateComputeEnvironmentInput{
+		ComputeEnvironment: aws.String(computeEnvironmentName),
+		ComputeResources:   &batch.ComputeResourceUpdate{},
 	}
 
-	if d.HasChange("tags") {
-		o, n := d.GetChange("tags")
+	if d.HasChange("service_role") {
+		input.ServiceRole = aws.String(d.Get("service_role").(string))
+	}
+	if d.HasChange("state") {
+		input.State = aws.String(d.Get("state").(string))
+	}
 
-		if err := keyvaluetags.BatchUpdateTags(conn, d.Get("arn").(string), o, n); err != nil {
-			return fmt.Errorf("error updating tags: %s", err)
+	if d.HasChange("compute_resources") {
+		computeResources := d.Get("compute_resources").([]interface{})
+		if len(computeResources) == 0 {
+			return fmt.Errorf("One compute environment is expected, but no compute environments are set")
 		}
+		computeResource := computeResources[0].(map[string]interface{})
+
+		input.ComputeResources.DesiredvCpus = aws.Int64(int64(computeResource["desired_vcpus"].(int)))
+		input.ComputeResources.MaxvCpus = aws.Int64(int64(computeResource["max_vcpus"].(int)))
+		input.ComputeResources.MinvCpus = aws.Int64(int64(computeResource["min_vcpus"].(int)))
+	}
+
+	log.Printf("[DEBUG] Update compute environment %s.\n", input)
+
+	if _, err := conn.UpdateComputeEnvironment(input); err != nil {
+		return err
 	}
 
 	return resourceAwsBatchComputeEnvironmentRead(d, meta)

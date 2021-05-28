@@ -7,8 +7,8 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/rds"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/terraform-providers/terraform-provider-aws/aws/internal/keyvaluetags"
 )
 
@@ -18,9 +18,6 @@ func resourceAwsDbSnapshot() *schema.Resource {
 		Read:   resourceAwsDbSnapshotRead,
 		Update: resourceAwsDbSnapshotUpdate,
 		Delete: resourceAwsDbSnapshotDelete,
-		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
-		},
 
 		Timeouts: &schema.ResourceTimeout{
 			Read: schema.DefaultTimeout(20 * time.Minute),
@@ -122,11 +119,11 @@ func resourceAwsDbSnapshotCreate(d *schema.ResourceData, meta interface{}) error
 		Tags:                 tags,
 	}
 
-	resp, err := conn.CreateDBSnapshot(params)
+	_, err := conn.CreateDBSnapshot(params)
 	if err != nil {
 		return fmt.Errorf("Error creating AWS DB Snapshot %s: %s", dBInstanceIdentifier, err)
 	}
-	d.SetId(aws.StringValue(resp.DBSnapshot.DBSnapshotIdentifier))
+	d.SetId(d.Get("db_snapshot_identifier").(string))
 
 	stateConf := &resource.StateChangeConf{
 		Pending:    []string{"creating"},
@@ -148,7 +145,6 @@ func resourceAwsDbSnapshotCreate(d *schema.ResourceData, meta interface{}) error
 
 func resourceAwsDbSnapshotRead(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).rdsconn
-	ignoreTagsConfig := meta.(*AWSClient).IgnoreTagsConfig
 
 	params := &rds.DescribeDBSnapshotsInput{
 		DBSnapshotIdentifier: aws.String(d.Id()),
@@ -167,12 +163,9 @@ func resourceAwsDbSnapshotRead(d *schema.ResourceData, meta interface{}) error {
 
 	snapshot := resp.DBSnapshots[0]
 
-	arn := aws.StringValue(snapshot.DBSnapshotArn)
-	d.Set("db_snapshot_identifier", snapshot.DBSnapshotIdentifier)
-	d.Set("db_instance_identifier", snapshot.DBInstanceIdentifier)
 	d.Set("allocated_storage", snapshot.AllocatedStorage)
 	d.Set("availability_zone", snapshot.AvailabilityZone)
-	d.Set("db_snapshot_arn", arn)
+	d.Set("db_snapshot_arn", snapshot.DBSnapshotArn)
 	d.Set("encrypted", snapshot.Encrypted)
 	d.Set("engine", snapshot.Engine)
 	d.Set("engine_version", snapshot.EngineVersion)
@@ -187,13 +180,13 @@ func resourceAwsDbSnapshotRead(d *schema.ResourceData, meta interface{}) error {
 	d.Set("status", snapshot.Status)
 	d.Set("vpc_id", snapshot.VpcId)
 
-	tags, err := keyvaluetags.RdsListTags(conn, arn)
+	tags, err := keyvaluetags.RdsListTags(conn, d.Get("db_snapshot_arn").(string))
 
 	if err != nil {
-		return fmt.Errorf("error listing tags for RDS DB Snapshot (%s): %s", arn, err)
+		return fmt.Errorf("error listing tags for RDS DB Snapshot (%s): %s", d.Get("db_snapshot_arn").(string), err)
 	}
 
-	if err := d.Set("tags", tags.IgnoreAws().IgnoreConfig(ignoreTagsConfig).Map()); err != nil {
+	if err := d.Set("tags", tags.IgnoreAws().Map()); err != nil {
 		return fmt.Errorf("error setting tags: %s", err)
 	}
 
@@ -227,6 +220,8 @@ func resourceAwsDbSnapshotUpdate(d *schema.ResourceData, meta interface{}) error
 		if err := keyvaluetags.RdsUpdateTags(conn, d.Get("db_snapshot_arn").(string), o, n); err != nil {
 			return fmt.Errorf("error updating RDS DB Snapshot (%s) tags: %s", d.Get("db_snapshot_arn").(string), err)
 		}
+
+		d.SetPartial("tags")
 	}
 
 	return nil

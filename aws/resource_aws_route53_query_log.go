@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/route53"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 func resourceAwsRoute53QueryLog() *schema.Resource {
@@ -50,7 +51,7 @@ func resourceAwsRoute53QueryLogCreate(d *schema.ResourceData, meta interface{}) 
 	}
 	log.Printf("[DEBUG] Route53 query logging configuration created: %#v", out)
 
-	d.SetId(aws.StringValue(out.QueryLoggingConfig.Id))
+	d.SetId(*out.QueryLoggingConfig.Id)
 
 	return resourceAwsRoute53QueryLogRead(d, meta)
 }

@@ -6,8 +6,9 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 func resourceAwsIamUserGroupMembership() *schema.Resource {
@@ -40,13 +41,12 @@ func resourceAwsIamUserGroupMembershipCreate(d *schema.ResourceData, meta interf
 	conn := meta.(*AWSClient).iamconn
 
 	user := d.Get("user").(string)
-	groupList := expandStringSet(d.Get("groups").(*schema.Set))
+	groupList := expandStringList(d.Get("groups").(*schema.Set).List())
 
 	if err := addUserToGroups(conn, user, groupList); err != nil {
 		return err
 	}
 
-	//lintignore:R015 // Allow legacy unstable ID usage in managed resource
 	d.SetId(resource.UniqueId())
 
 	return resourceAwsIamUserGroupMembershipRead(d, meta)
@@ -112,8 +112,8 @@ func resourceAwsIamUserGroupMembershipUpdate(d *schema.ResourceData, meta interf
 
 		os := o.(*schema.Set)
 		ns := n.(*schema.Set)
-		remove := expandStringSet(os.Difference(ns))
-		add := expandStringSet(ns.Difference(os))
+		remove := expandStringList(os.Difference(ns).List())
+		add := expandStringList(ns.Difference(os).List())
 
 		if err := removeUserFromGroups(conn, user, remove); err != nil {
 			return err
@@ -130,7 +130,7 @@ func resourceAwsIamUserGroupMembershipUpdate(d *schema.ResourceData, meta interf
 func resourceAwsIamUserGroupMembershipDelete(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).iamconn
 	user := d.Get("user").(string)
-	groups := expandStringSet(d.Get("groups").(*schema.Set))
+	groups := expandStringList(d.Get("groups").(*schema.Set).List())
 
 	err := removeUserFromGroups(conn, user, groups)
 	return err
@@ -178,8 +178,6 @@ func resourceAwsIamUserGroupMembershipImport(d *schema.ResourceData, meta interf
 
 	d.Set("user", userName)
 	d.Set("groups", groupList)
-
-	//lintignore:R015 // Allow legacy unstable ID usage in managed resource
 	d.SetId(resource.UniqueId())
 
 	return []*schema.ResourceData{d}, nil

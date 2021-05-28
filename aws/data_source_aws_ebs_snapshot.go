@@ -6,9 +6,8 @@ import (
 	"sort"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/terraform-providers/terraform-provider-aws/aws/internal/keyvaluetags"
 )
 
@@ -17,30 +16,30 @@ func dataSourceAwsEbsSnapshot() *schema.Resource {
 		Read: dataSourceAwsEbsSnapshotRead,
 
 		Schema: map[string]*schema.Schema{
-			"arn": {
-				Type:     schema.TypeString,
-				Computed: true,
-			},
 			//selection criteria
 			"filter": dataSourceFiltersSchema(),
 			"most_recent": {
 				Type:     schema.TypeBool,
 				Optional: true,
 				Default:  false,
+				ForceNew: true,
 			},
 			"owners": {
 				Type:     schema.TypeList,
 				Optional: true,
+				ForceNew: true,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 			},
 			"snapshot_ids": {
 				Type:     schema.TypeList,
 				Optional: true,
+				ForceNew: true,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 			},
 			"restorable_by_user_ids": {
 				Type:     schema.TypeList,
 				Optional: true,
+				ForceNew: true,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 			},
 			//Computed values returned
@@ -136,13 +135,11 @@ func dataSourceAwsEbsSnapshotRead(d *schema.ResourceData, meta interface{}) erro
 	}
 
 	//Single Snapshot found so set to state
-	return snapshotDescriptionAttributes(d, resp.Snapshots[0], meta)
+	return snapshotDescriptionAttributes(d, resp.Snapshots[0])
 }
 
-func snapshotDescriptionAttributes(d *schema.ResourceData, snapshot *ec2.Snapshot, meta interface{}) error {
-	ignoreTagsConfig := meta.(*AWSClient).IgnoreTagsConfig
-
-	d.SetId(aws.StringValue(snapshot.SnapshotId))
+func snapshotDescriptionAttributes(d *schema.ResourceData, snapshot *ec2.Snapshot) error {
+	d.SetId(*snapshot.SnapshotId)
 	d.Set("snapshot_id", snapshot.SnapshotId)
 	d.Set("volume_id", snapshot.VolumeId)
 	d.Set("data_encryption_key_id", snapshot.DataEncryptionKeyId)
@@ -154,18 +151,9 @@ func snapshotDescriptionAttributes(d *schema.ResourceData, snapshot *ec2.Snapsho
 	d.Set("owner_id", snapshot.OwnerId)
 	d.Set("owner_alias", snapshot.OwnerAlias)
 
-	if err := d.Set("tags", keyvaluetags.Ec2KeyValueTags(snapshot.Tags).IgnoreAws().IgnoreConfig(ignoreTagsConfig).Map()); err != nil {
+	if err := d.Set("tags", keyvaluetags.Ec2KeyValueTags(snapshot.Tags).IgnoreAws().Map()); err != nil {
 		return fmt.Errorf("error setting tags: %s", err)
 	}
-
-	snapshotArn := arn.ARN{
-		Partition: meta.(*AWSClient).partition,
-		Region:    meta.(*AWSClient).region,
-		Resource:  fmt.Sprintf("snapshot/%s", d.Id()),
-		Service:   "ec2",
-	}.String()
-
-	d.Set("arn", snapshotArn)
 
 	return nil
 }

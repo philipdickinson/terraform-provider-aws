@@ -11,10 +11,9 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/redshift"
 	"github.com/hashicorp/go-multierror"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
-	"github.com/terraform-providers/terraform-provider-aws/aws/internal/hashcode"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/hashcode"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 func resourceAwsRedshiftSecurityGroup() *schema.Resource {
@@ -24,19 +23,15 @@ func resourceAwsRedshiftSecurityGroup() *schema.Resource {
 		Update: resourceAwsRedshiftSecurityGroupUpdate,
 		Delete: resourceAwsRedshiftSecurityGroupDelete,
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			State: resourceAwsRedshiftClusterImport,
 		},
 
 		Schema: map[string]*schema.Schema{
 			"name": {
-				Type:     schema.TypeString,
-				Required: true,
-				ForceNew: true,
-				ValidateFunc: validation.All(
-					validation.StringLenBetween(1, 255),
-					validation.StringNotInSlice([]string{"default"}, false),
-					validation.StringMatch(regexp.MustCompile(`^[0-9a-z-]+$`), "must contain only lowercase alphanumeric characters and hyphens"),
-				),
+				Type:         schema.TypeString,
+				Required:     true,
+				ForceNew:     true,
+				ValidateFunc: validateRedshiftSecurityGroupName,
 			},
 
 			"description": {
@@ -174,7 +169,10 @@ func resourceAwsRedshiftSecurityGroupUpdate(d *schema.ResourceData, meta interfa
 		os := o.(*schema.Set)
 		ns := n.(*schema.Set)
 
-		removeIngressRules := expandRedshiftSGRevokeIngress(os.Difference(ns).List())
+		removeIngressRules, err := expandRedshiftSGRevokeIngress(os.Difference(ns).List())
+		if err != nil {
+			return err
+		}
 		if len(removeIngressRules) > 0 {
 			for _, r := range removeIngressRules {
 				r.ClusterSecurityGroupName = aws.String(d.Id())
@@ -186,7 +184,10 @@ func resourceAwsRedshiftSecurityGroupUpdate(d *schema.ResourceData, meta interfa
 			}
 		}
 
-		addIngressRules := expandRedshiftSGAuthorizeIngress(ns.Difference(os).List())
+		addIngressRules, err := expandRedshiftSGAuthorizeIngress(ns.Difference(os).List())
+		if err != nil {
+			return err
+		}
 		if len(addIngressRules) > 0 {
 			for _, r := range addIngressRules {
 				r.ClusterSecurityGroupName = aws.String(d.Id())
@@ -245,6 +246,24 @@ func resourceAwsRedshiftSecurityGroupRetrieve(d *schema.ResourceData, meta inter
 	}
 
 	return resp.ClusterSecurityGroups[0], nil
+}
+
+func validateRedshiftSecurityGroupName(v interface{}, k string) (ws []string, errors []error) {
+	value := v.(string)
+	if value == "default" {
+		errors = append(errors, fmt.Errorf("the Redshift Security Group name cannot be %q", value))
+	}
+	if !regexp.MustCompile(`^[0-9a-z-]+$`).MatchString(value) {
+		errors = append(errors, fmt.Errorf(
+			"only lowercase alphanumeric characters and hyphens allowed in %q: %q",
+			k, value))
+	}
+	if len(value) > 255 {
+		errors = append(errors, fmt.Errorf(
+			"%q cannot be longer than 32 characters: %q", k, value))
+	}
+	return
+
 }
 
 func resourceAwsRedshiftSecurityGroupIngressHash(v interface{}) int {
@@ -324,7 +343,7 @@ func resourceAwsRedshiftSecurityGroupStateRefreshFunc(
 	}
 }
 
-func expandRedshiftSGAuthorizeIngress(configured []interface{}) []redshift.AuthorizeClusterSecurityGroupIngressInput {
+func expandRedshiftSGAuthorizeIngress(configured []interface{}) ([]redshift.AuthorizeClusterSecurityGroupIngressInput, error) {
 	var ingress []redshift.AuthorizeClusterSecurityGroupIngressInput
 
 	// Loop over our configured parameters and create
@@ -349,10 +368,10 @@ func expandRedshiftSGAuthorizeIngress(configured []interface{}) []redshift.Autho
 		ingress = append(ingress, i)
 	}
 
-	return ingress
+	return ingress, nil
 }
 
-func expandRedshiftSGRevokeIngress(configured []interface{}) []redshift.RevokeClusterSecurityGroupIngressInput {
+func expandRedshiftSGRevokeIngress(configured []interface{}) ([]redshift.RevokeClusterSecurityGroupIngressInput, error) {
 	var ingress []redshift.RevokeClusterSecurityGroupIngressInput
 
 	// Loop over our configured parameters and create
@@ -377,5 +396,5 @@ func expandRedshiftSGRevokeIngress(configured []interface{}) []redshift.RevokeCl
 		ingress = append(ingress, i)
 	}
 
-	return ingress
+	return ingress, nil
 }

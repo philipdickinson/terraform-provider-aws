@@ -8,9 +8,9 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/organizations"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 	"github.com/terraform-providers/terraform-provider-aws/aws/internal/keyvaluetags"
 )
 
@@ -54,13 +54,10 @@ func resourceAwsOrganizationsAccount() *schema.Resource {
 				ValidateFunc: validation.StringLenBetween(1, 50),
 			},
 			"email": {
-				ForceNew: true,
-				Type:     schema.TypeString,
-				Required: true,
-				ValidateFunc: validation.All(
-					validation.StringLenBetween(6, 64),
-					validation.StringMatch(regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`), "must be a valid email address"),
-				),
+				ForceNew:     true,
+				Type:         schema.TypeString,
+				Required:     true,
+				ValidateFunc: validateAwsOrganizationsAccountEmail,
 			},
 			"iam_user_access_to_billing": {
 				ForceNew:     true,
@@ -72,7 +69,7 @@ func resourceAwsOrganizationsAccount() *schema.Resource {
 				ForceNew:     true,
 				Type:         schema.TypeString,
 				Optional:     true,
-				ValidateFunc: validation.StringMatch(regexp.MustCompile(`^[\w+=,.@-]{1,64}$`), "must consist of uppercase letters, lowercase letters, digits with no spaces, and any of the following characters"),
+				ValidateFunc: validateAwsOrganizationsAccountRoleName,
 			},
 			"tags": tagsSchema(),
 		},
@@ -143,7 +140,7 @@ func resourceAwsOrganizationsAccountCreate(d *schema.ResourceData, meta interfac
 
 	// Store the ID
 	accountId := stateResp.(*organizations.CreateAccountStatus).AccountId
-	d.SetId(aws.StringValue(accountId))
+	d.SetId(*accountId)
 
 	if v, ok := d.GetOk("parent_id"); ok {
 		newParentID := v.(string)
@@ -178,8 +175,6 @@ func resourceAwsOrganizationsAccountCreate(d *schema.ResourceData, meta interfac
 
 func resourceAwsOrganizationsAccountRead(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*AWSClient).organizationsconn
-	ignoreTagsConfig := meta.(*AWSClient).IgnoreTagsConfig
-
 	describeOpts := &organizations.DescribeAccountInput{
 		AccountId: aws.String(d.Id()),
 	}
@@ -221,7 +216,7 @@ func resourceAwsOrganizationsAccountRead(d *schema.ResourceData, meta interface{
 		return fmt.Errorf("error listing tags for AWS Organizations Account (%s): %s", d.Id(), err)
 	}
 
-	if err := d.Set("tags", tags.IgnoreAws().IgnoreConfig(ignoreTagsConfig).Map()); err != nil {
+	if err := d.Set("tags", tags.IgnoreAws().Map()); err != nil {
 		return fmt.Errorf("error setting tags: %s", err)
 	}
 
@@ -302,6 +297,36 @@ func resourceAwsOrganizationsAccountStateRefreshFunc(conn *organizations.Organiz
 		}
 		return accountStatus, *accountStatus.State, nil
 	}
+}
+
+func validateAwsOrganizationsAccountEmail(v interface{}, k string) (ws []string, errors []error) {
+	value := v.(string)
+	if !regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`).MatchString(value) {
+		errors = append(errors, fmt.Errorf(
+			"%q must be a valid email address", value))
+	}
+
+	if len(value) < 6 {
+		errors = append(errors, fmt.Errorf(
+			"%q cannot be less than 6 characters", value))
+	}
+
+	if len(value) > 64 {
+		errors = append(errors, fmt.Errorf(
+			"%q cannot be greater than 64 characters", value))
+	}
+
+	return
+}
+
+func validateAwsOrganizationsAccountRoleName(v interface{}, k string) (ws []string, errors []error) {
+	value := v.(string)
+	if !regexp.MustCompile(`^[\w+=,.@-]{1,64}$`).MatchString(value) {
+		errors = append(errors, fmt.Errorf(
+			"%q must consist of uppercase letters, lowercase letters, digits with no spaces, and any of the following characters: =,.@-", value))
+	}
+
+	return
 }
 
 func resourceAwsOrganizationsAccountGetParentId(conn *organizations.Organizations, childId string) (string, error) {

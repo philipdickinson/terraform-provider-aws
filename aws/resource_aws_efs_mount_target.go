@@ -7,11 +7,11 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/arn"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/efs"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 func resourceAwsEfsMountTarget() *schema.Resource {
@@ -41,15 +41,12 @@ func resourceAwsEfsMountTarget() *schema.Resource {
 				Computed: true,
 				Optional: true,
 				ForceNew: true,
-				ValidateFunc: validation.Any(
-					validation.IsIPv4Address,
-					validation.StringIsEmpty,
-				),
 			},
 
 			"security_groups": {
 				Type:     schema.TypeSet,
 				Elem:     &schema.Schema{Type: schema.TypeString},
+				Set:      schema.HashString,
 				Computed: true,
 				Optional: true,
 			},
@@ -65,22 +62,6 @@ func resourceAwsEfsMountTarget() *schema.Resource {
 				Computed: true,
 			},
 			"dns_name": {
-				Type:     schema.TypeString,
-				Computed: true,
-			},
-			"mount_target_dns_name": {
-				Type:     schema.TypeString,
-				Computed: true,
-			},
-			"availability_zone_name": {
-				Type:     schema.TypeString,
-				Computed: true,
-			},
-			"availability_zone_id": {
-				Type:     schema.TypeString,
-				Computed: true,
-			},
-			"owner_id": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
@@ -115,7 +96,7 @@ func resourceAwsEfsMountTargetCreate(d *schema.ResourceData, meta interface{}) e
 		input.IpAddress = aws.String(v.(string))
 	}
 	if v, ok := d.GetOk("security_groups"); ok {
-		input.SecurityGroups = expandStringSet(v.(*schema.Set))
+		input.SecurityGroups = expandStringList(v.(*schema.Set).List())
 	}
 
 	log.Printf("[DEBUG] Creating EFS mount target: %#v", input)
@@ -125,12 +106,12 @@ func resourceAwsEfsMountTargetCreate(d *schema.ResourceData, meta interface{}) e
 		return err
 	}
 
-	d.SetId(aws.StringValue(mt.MountTargetId))
+	d.SetId(*mt.MountTargetId)
 	log.Printf("[INFO] EFS mount target ID: %s", d.Id())
 
 	stateConf := &resource.StateChangeConf{
-		Pending: []string{efs.LifeCycleStateCreating},
-		Target:  []string{efs.LifeCycleStateAvailable},
+		Pending: []string{"creating"},
+		Target:  []string{"available"},
 		Refresh: func() (interface{}, string, error) {
 			resp, err := conn.DescribeMountTargets(&efs.DescribeMountTargetsInput{
 				MountTargetId: aws.String(d.Id()),
@@ -145,20 +126,20 @@ func resourceAwsEfsMountTargetCreate(d *schema.ResourceData, meta interface{}) e
 
 			mt := resp.MountTargets[0]
 
-			log.Printf("[DEBUG] Current status of %q: %q", aws.StringValue(mt.MountTargetId), aws.StringValue(mt.LifeCycleState))
-			return mt, aws.StringValue(mt.LifeCycleState), nil
+			log.Printf("[DEBUG] Current status of %q: %q", *mt.MountTargetId, *mt.LifeCycleState)
+			return mt, *mt.LifeCycleState, nil
 		},
-		Timeout:    30 * time.Minute,
+		Timeout:    10 * time.Minute,
 		Delay:      2 * time.Second,
 		MinTimeout: 3 * time.Second,
 	}
 
 	_, err = stateConf.WaitForState()
 	if err != nil {
-		return fmt.Errorf("error waiting for EFS mount target (%s) to create: %s", d.Id(), err)
+		return fmt.Errorf("Error waiting for EFS mount target (%s) to create: %s", d.Id(), err)
 	}
 
-	log.Printf("[DEBUG] EFS mount target created: %s", aws.StringValue(mt.MountTargetId))
+	log.Printf("[DEBUG] EFS mount target created: %s", *mt.MountTargetId)
 
 	return resourceAwsEfsMountTargetRead(d, meta)
 }
@@ -169,7 +150,7 @@ func resourceAwsEfsMountTargetUpdate(d *schema.ResourceData, meta interface{}) e
 	if d.HasChange("security_groups") {
 		input := efs.ModifyMountTargetSecurityGroupsInput{
 			MountTargetId:  aws.String(d.Id()),
-			SecurityGroups: expandStringSet(d.Get("security_groups").(*schema.Set)),
+			SecurityGroups: expandStringList(d.Get("security_groups").(*schema.Set).List()),
 		}
 		_, err := conn.ModifyMountTargetSecurityGroups(&input)
 		if err != nil {
@@ -186,7 +167,7 @@ func resourceAwsEfsMountTargetRead(d *schema.ResourceData, meta interface{}) err
 		MountTargetId: aws.String(d.Id()),
 	})
 	if err != nil {
-		if isAWSErr(err, efs.ErrCodeMountTargetNotFound, "") {
+		if ec2err, ok := err.(awserr.Error); ok && ec2err.Code() == "MountTargetNotFound" {
 			// The EFS mount target could not be found,
 			// which would indicate that it might be
 			// already deleted.
@@ -205,6 +186,8 @@ func resourceAwsEfsMountTargetRead(d *schema.ResourceData, meta interface{}) err
 
 	log.Printf("[DEBUG] Found EFS mount target: %#v", mt)
 
+	d.SetId(*mt.MountTargetId)
+
 	fsARN := arn.ARN{
 		AccountID: meta.(*AWSClient).accountid,
 		Partition: meta.(*AWSClient).partition,
@@ -218,9 +201,6 @@ func resourceAwsEfsMountTargetRead(d *schema.ResourceData, meta interface{}) err
 	d.Set("ip_address", mt.IpAddress)
 	d.Set("subnet_id", mt.SubnetId)
 	d.Set("network_interface_id", mt.NetworkInterfaceId)
-	d.Set("availability_zone_name", mt.AvailabilityZoneName)
-	d.Set("availability_zone_id", mt.AvailabilityZoneId)
-	d.Set("owner_id", mt.OwnerId)
 
 	sgResp, err := conn.DescribeMountTargetSecurityGroups(&efs.DescribeMountTargetSecurityGroupsInput{
 		MountTargetId: aws.String(d.Id()),
@@ -229,13 +209,18 @@ func resourceAwsEfsMountTargetRead(d *schema.ResourceData, meta interface{}) err
 		return err
 	}
 
-	err = d.Set("security_groups", flattenStringSet(sgResp.SecurityGroups))
+	err = d.Set("security_groups", schema.NewSet(schema.HashString, flattenStringList(sgResp.SecurityGroups)))
 	if err != nil {
 		return err
 	}
 
+	// DNS name per http://docs.aws.amazon.com/efs/latest/ug/mounting-fs-mount-cmd-dns-name.html
+	_, err = getAzFromSubnetId(*mt.SubnetId, meta.(*AWSClient).ec2conn)
+	if err != nil {
+		return fmt.Errorf("Failed getting Availability Zone from subnet ID (%s): %s", *mt.SubnetId, err)
+	}
+
 	d.Set("dns_name", meta.(*AWSClient).RegionalHostname(fmt.Sprintf("%s.efs", aws.StringValue(mt.FileSystemId))))
-	d.Set("mount_target_dns_name", meta.(*AWSClient).RegionalHostname(fmt.Sprintf("%s.%s.efs", aws.StringValue(mt.AvailabilityZoneName), aws.StringValue(mt.FileSystemId))))
 
 	return nil
 }
@@ -253,7 +238,7 @@ func getAzFromSubnetId(subnetId string, conn *ec2.EC2) (string, error) {
 		return "", fmt.Errorf("Expected exactly 1 subnet returned for %q, got: %d", subnetId, l)
 	}
 
-	return aws.StringValue(out.Subnets[0].AvailabilityZone), nil
+	return *out.Subnets[0].AvailabilityZone, nil
 }
 
 func resourceAwsEfsMountTargetDelete(d *schema.ResourceData, meta interface{}) error {
@@ -279,18 +264,23 @@ func resourceAwsEfsMountTargetDelete(d *schema.ResourceData, meta interface{}) e
 
 func waitForDeleteEfsMountTarget(conn *efs.EFS, id string, timeout time.Duration) error {
 	stateConf := &resource.StateChangeConf{
-		Pending: []string{efs.LifeCycleStateAvailable, efs.LifeCycleStateDeleting, efs.LifeCycleStateDeleted},
+		Pending: []string{"available", "deleting", "deleted"},
 		Target:  []string{},
 		Refresh: func() (interface{}, string, error) {
 			resp, err := conn.DescribeMountTargets(&efs.DescribeMountTargetsInput{
 				MountTargetId: aws.String(id),
 			})
 			if err != nil {
-				if isAWSErr(err, efs.ErrCodeMountTargetNotFound, "") {
+				awsErr, ok := err.(awserr.Error)
+				if !ok {
+					return nil, "error", err
+				}
+
+				if awsErr.Code() == "MountTargetNotFound" {
 					return nil, "", nil
 				}
 
-				return nil, "error", err
+				return nil, "error", awsErr
 			}
 
 			if hasEmptyMountTargets(resp) {
@@ -299,8 +289,8 @@ func waitForDeleteEfsMountTarget(conn *efs.EFS, id string, timeout time.Duration
 
 			mt := resp.MountTargets[0]
 
-			log.Printf("[DEBUG] Current status of %q: %q", aws.StringValue(mt.MountTargetId), aws.StringValue(mt.LifeCycleState))
-			return mt, aws.StringValue(mt.LifeCycleState), nil
+			log.Printf("[DEBUG] Current status of %q: %q", *mt.MountTargetId, *mt.LifeCycleState)
+			return mt, *mt.LifeCycleState, nil
 		},
 		Timeout:    timeout,
 		Delay:      2 * time.Second,

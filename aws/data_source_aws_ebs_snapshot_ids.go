@@ -7,7 +7,8 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/hashcode"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 func dataSourceAwsEbsSnapshotIds() *schema.Resource {
@@ -19,11 +20,13 @@ func dataSourceAwsEbsSnapshotIds() *schema.Resource {
 			"owners": {
 				Type:     schema.TypeList,
 				Optional: true,
+				ForceNew: true,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 			},
 			"restorable_by_user_ids": {
 				Type:     schema.TypeList,
 				Optional: true,
+				ForceNew: true,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 			},
 			"ids": {
@@ -73,8 +76,7 @@ func dataSourceAwsEbsSnapshotIdsRead(d *schema.ResourceData, meta interface{}) e
 		snapshotIds = append(snapshotIds, *snapshot.SnapshotId)
 	}
 
-	d.SetId(meta.(*AWSClient).region)
-
+	d.SetId(fmt.Sprintf("%d", hashcode.String(params.String())))
 	d.Set("ids", snapshotIds)
 
 	return nil

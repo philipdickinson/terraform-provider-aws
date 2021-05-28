@@ -6,7 +6,7 @@ import (
 
 	"github.com/bflad/tfproviderlint/helper/astutils"
 	"github.com/bflad/tfproviderlint/passes/commentignore"
-	"github.com/bflad/tfproviderlint/passes/stdlib/fmtsprintfcallexpr"
+	"github.com/terraform-providers/terraform-provider-aws/awsproviderlint/passes/fmtsprintfcallexpr"
 	"golang.org/x/tools/go/analysis"
 )
 

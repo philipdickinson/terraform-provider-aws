@@ -3,10 +3,11 @@ package aws
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 func dataSourceAwsIamAccountAlias() *schema.Resource {
@@ -26,6 +27,7 @@ func dataSourceAwsIamAccountAliasRead(d *schema.ResourceData, meta interface{}) 
 	conn := meta.(*AWSClient).iamconn
 
 	log.Printf("[DEBUG] Reading IAM Account Aliases.")
+	d.SetId(time.Now().UTC().String())
 
 	req := &iam.ListAccountAliasesInput{}
 	resp, err := conn.ListAccountAliases(req)
@@ -39,7 +41,6 @@ func dataSourceAwsIamAccountAliasRead(d *schema.ResourceData, meta interface{}) 
 	}
 
 	alias := aws.StringValue(resp.AccountAliases[0])
-	d.SetId(alias)
 	log.Printf("[DEBUG] Setting AWS IAM Account Alias to %s.", alias)
 	d.Set("account_alias", alias)
 
