@@ -17,7 +17,7 @@ require (
 	github.com/hashicorp/vault v0.10.4
 	github.com/jen20/awspolicyequivalence v1.1.0
 	github.com/katbyte/terrafmt v0.2.1-0.20200303174203-e6a3e82cb21b
-	github.com/mitchellh/copystructure v1.0.0
+	github.com/mitchellh/copystructure v1.2.0
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/pquerna/otp v1.2.0
 	golang.org/x/tools v0.0.0-20200216192241-b320d3a0f5a2
